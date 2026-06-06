@@ -44,11 +44,16 @@ type FilterType = 'original' | 'grayscale' | 'bw' | 'magic-color';
 
 interface PageState {
   corners: Point[]; // Normalized coordinate handles
+  handles?: Point[]; // Alias handles
   croppedImage: string | null;
   filteredImage: string | null;
   croppedWidth: number;
   croppedHeight: number;
   filter: FilterType;
+  cropVariations?: Point[][];
+  selectedVariationIndex?: number;
+  isEdited?: boolean;
+  croppedCanvasData?: string;
 }
 
 // Coordinate Sorter: TL, TR, BR, BL order
@@ -95,7 +100,7 @@ export default function SmartScannerTool({
 
   // OpenCV Loader State (Async CDN via custom hook)
   const { loaded: opencvLoaded, error: opencvError } = useLoadWASM({
-    src: 'https://docs.opencv.org/4.10.0/opencv.js',
+    src: 'https://docs.opencv.org/4.8.0/opencv.js',
     scriptId: 'opencv-cdn-script',
     checkReady: checkOpenCVReady,
   });
@@ -107,6 +112,8 @@ export default function SmartScannerTool({
   const [originalSize, setOriginalSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [corners, setCorners] = useState<Point[]>([]);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [cropVariations, setCropVariations] = useState<Point[][]>([]);
+  const [selectedVariationIndex, setSelectedVariationIndex] = useState<number>(0);
 
   const [croppedImage, setCroppedImage] = useState<string | null>(null); // Output crops
   const [croppedWidth, setCroppedWidth] = useState<number>(0);
@@ -117,9 +124,12 @@ export default function SmartScannerTool({
 
   // Master multi-page caching layer state (Tracks processed states across all documents)
   const [pagesData, setPagesData] = useState<Record<number, PageState>>({});
+  const [showPreview, setShowPreview] = useState<boolean>(false);
+  const [justSaved, setJustSaved] = useState<boolean>(false);
 
   const [processing, setProcessing] = useState<boolean>(false);
   const [progressText, setProgressText] = useState<string>('');
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -142,96 +152,150 @@ export default function SmartScannerTool({
     ]);
   };
 
-  // Run auto detection pipeline
-  const runAutoDetect = (canvas: HTMLCanvasElement) => {
+  // Order the corners (Top-Left, Top-Right, Bottom-Right, Bottom-Left)
+  // and map them to percentages (0.0 to 1.0) based on canvas width/height
+  const orderAndNormalizeCorners = (
+    points: { x: number; y: number }[] | null,
+    width: number,
+    height: number
+  ): Point[] | null => {
+    if (!points || points.length !== 4) return null;
+    const sorted = sortPoints(points);
+    return sorted.map(pt => ({
+      x: pt.x / width,
+      y: pt.y / height
+    }));
+  };
+
+  const findDocumentEdges = (canvasElement: HTMLCanvasElement): Point[][] => {
     if (!checkOpenCVReady()) {
-      generateDefaultCorners();
-      return;
+      return [];
     }
     const cv = (window as any).cv;
-
-    let src: any = null;
-    let gray: any = null;
-    let blurred: any = null;
-    let edged: any = null;
-    let contours: any = null;
-    let hierarchy: any = null;
+    let src = cv.imread(canvasElement);
+    let gray = new cv.Mat();
+    let blur = new cv.Mat();
+    let edges = new cv.Mat();
+    let dilated = new cv.Mat();
+    let contours = new cv.MatVector();
+    let hierarchy = new cv.Mat();
+    let M: any = null;
+    
+    let foundVariations: Point[][] = [];
 
     try {
-      src = cv.imread(canvas);
-      gray = new cv.Mat();
-      blurred = new cv.Mat();
-      edged = new cv.Mat();
-
-      // 1. Grayscale conversion
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
-
-      // 2. Blur to eliminate small noise spots
+      // 1. Grayscale & Blur to remove noise
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
       let ksize = new cv.Size(5, 5);
-      cv.GaussianBlur(gray, blurred, ksize, 0, 0, cv.BORDER_DEFAULT);
+      cv.GaussianBlur(gray, blur, ksize, 0, 0, cv.BORDER_DEFAULT);
 
-      // 3. Canny edge detector
-      cv.Canny(blurred, edged, 50, 150, 3, false);
+      // 2. Dynamic Canny Edge Detection
+      // Instead of hardcoded values, we use standard scanner thresholds
+      cv.Canny(blur, edges, 75, 200);
 
-      // 4. Contour retrieval
-      contours = new cv.MatVector();
-      hierarchy = new cv.Mat();
-      cv.findContours(edged, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+      // 3. MORPHOLOGICAL DILATION (The Crucial Fix)
+      // This bridges gaps in the Canny lines caused by low contrast/shadows
+      M = cv.Mat.ones(5, 5, cv.CV_8U); // 5x5 structural element
+      let anchor = new cv.Point(-1, -1);
+      cv.dilate(edges, dilated, M, anchor, 1, cv.BORDER_CONSTANT, cv.morphologyDefaultBorderValue());
 
-      let maxArea = 0;
-      let approxPoints: Point[] = [];
+      // 4. Find Contours
+      cv.findContours(dilated, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
+      // 5. Sort contours by area descending
+      let sortableContours = [];
       for (let i = 0; i < contours.size(); ++i) {
-        let contour = contours.get(i);
-        let area = cv.contourArea(contour);
+        let cnt = contours.get(i);
+        let area = cv.contourArea(cnt);
+        sortableContours.push({ contour: cnt, area: area });
+      }
+      sortableContours.sort((item1: any, item2: any) => (item1.area > item2.area) ? -1 : (item1.area < item2.area) ? 1 : 0);
 
-        if (area > 2000) { // filter out too-small structures
-          let perimeter = cv.arcLength(contour, true);
-          let approx = new cv.Mat();
-          try {
-            cv.approxPolyDP(contour, approx, 0.02 * perimeter, true);
+      const totalImageArea = canvasElement.width * canvasElement.height;
+      const minDocumentArea = totalImageArea * 0.15; // Lowered slightly to catch smaller variations
 
-            if (approx.rows === 4) {
-              if (area > maxArea) {
-                maxArea = area;
-                approxPoints = [];
-                for (let j = 0; j < 4; j++) {
-                  approxPoints.push({
-                    x: approx.data32S[j * 2],
-                    y: approx.data32S[j * 2 + 1]
-                  });
-                }
-              }
-            }
-          } finally {
-            // Immediately free memory of internal loop matrices
-            approx.delete();
+      // 6. Find the top 4-point polygons
+      for (let i = 0; i < sortableContours.length; i++) {
+        if (foundVariations.length >= 3) break; // Stop after finding top 3
+
+        let cnt = sortableContours[i].contour;
+        let area = sortableContours[i].area;
+        
+        if (area < minDocumentArea) continue;
+
+        let peri = cv.arcLength(cnt, true);
+        let approx = new cv.Mat();
+        cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+
+        if (approx.rows === 4) {
+          let points = [];
+          for (let j = 0; j < 4; j++) {
+             points.push({
+                x: approx.data32S[j * 2],
+                y: approx.data32S[j * 2 + 1]
+             });
+          }
+          // Normalize immediately and push to variations
+          let normalized = orderAndNormalizeCorners(points, canvasElement.width, canvasElement.height);
+          if (normalized) {
+            foundVariations.push(normalized);
           }
         }
-      }
-
-      if (approxPoints.length === 4) {
-        // Convert to percentage normalized coordinates (0.0 to 1.0)
-        const sorted = sortPoints(approxPoints);
-        const normalized = sorted.map(pt => ({
-          x: pt.x / canvas.width,
-          y: pt.y / canvas.height
-        }));
-        setCorners(normalized);
-      } else {
-        generateDefaultCorners();
+        approx.delete();
       }
     } catch (err) {
-      console.error('OpenCV boundary calculation failed:', err);
-      generateDefaultCorners();
+      console.error("OpenCV processing error:", err);
     } finally {
-      // Direct WebAssembly explicit cleanup in finally segment to prevent leaks
+      // 7. CRITICAL: Prevent WASM Memory Leaks
       if (src) src.delete();
       if (gray) gray.delete();
-      if (blurred) blurred.delete();
-      if (edged) edged.delete();
+      if (blur) blur.delete();
+      if (edges) edges.delete();
+      if (dilated) dilated.delete(); 
       if (contours) contours.delete();
       if (hierarchy) hierarchy.delete();
+      if (M) M.delete();
+    }
+
+    // 7. Fallback Logic
+    if (foundVariations.length === 0) {
+      const fallback = [{x: 0.1, y: 0.1}, {x: 0.9, y: 0.1}, {x: 0.9, y: 0.9}, {x: 0.1, y: 0.9}];
+      foundVariations.push(fallback);
+    }
+
+    return foundVariations; // Now returns an array of point arrays
+  };
+
+  // Run auto detection pipeline
+  const runAutoDetect = (canvas: HTMLCanvasElement) => {
+    try {
+      const variations = findDocumentEdges(canvas);
+      if (variations && variations.length > 0) {
+        setCropVariations(variations);
+        setSelectedVariationIndex(0);
+        setCorners(variations[0]);
+      } else {
+        const fallback = [[
+          { x: 0.1, y: 0.1 },
+          { x: 0.9, y: 0.1 },
+          { x: 0.9, y: 0.9 },
+          { x: 0.1, y: 0.9 }
+        ]];
+        setCropVariations(fallback);
+        setSelectedVariationIndex(0);
+        setCorners(fallback[0]);
+      }
+    } catch (error) {
+      console.error("Error in runAutoDetect:", error);
+      const fallback = [[
+        { x: 0.1, y: 0.1 },
+        { x: 0.9, y: 0.1 },
+        { x: 0.9, y: 0.9 },
+        { x: 0.1, y: 0.9 }
+      ]];
+      setCropVariations(fallback);
+      setSelectedVariationIndex(0);
+      setCorners(fallback[0]);
     }
   };
 
@@ -244,16 +308,272 @@ export default function SmartScannerTool({
         filteredImage,
         croppedWidth,
         croppedHeight,
-        filter
+        filter,
+        cropVariations,
+        selectedVariationIndex,
+        isEdited: false,
+        handles: corners,
+        croppedCanvasData: undefined
       };
+      
+      const merged = {
+        ...current,
+        cropVariations: overrideFields?.cropVariations ?? (prev[pageIdx]?.cropVariations || cropVariations),
+        selectedVariationIndex: overrideFields?.selectedVariationIndex ?? (prev[pageIdx]?.selectedVariationIndex ?? selectedVariationIndex),
+        isEdited: overrideFields?.isEdited ?? prev[pageIdx]?.isEdited ?? current.isEdited,
+        handles: overrideFields?.handles ?? prev[pageIdx]?.handles ?? (overrideFields?.corners ?? current.corners),
+        croppedCanvasData: overrideFields?.croppedCanvasData ?? prev[pageIdx]?.croppedCanvasData,
+        ...overrideFields
+      };
+
       return {
         ...prev,
-        [pageIdx]: {
-          ...current,
-          ...overrideFields
-        }
+        [pageIdx]: merged
       };
     });
+  };
+
+  const performOfflineWarpAndFilter = async (
+    canvas: HTMLCanvasElement,
+    selectedCorners: Point[],
+    targetFilter: FilterType
+  ): Promise<{ outputDataUrl: string; width: number; height: number }> => {
+    const cv = (window as any).cv;
+    let src = cv.imread(canvas);
+    let srcMat: any = null;
+    let dstMat: any = null;
+    let M: any = null;
+    let dst: any = null;
+    let filterSrc: any = null;
+    let filterDst: any = null;
+    let gray: any = null;
+    let blurred: any = null;
+
+    try {
+      const width = canvas.width;
+      const height = canvas.height;
+
+      const [tlPct, trPct, brPct, blPct] = selectedCorners;
+      const tl = { x: tlPct.x * width, y: tlPct.y * height };
+      const tr = { x: trPct.x * width, y: trPct.y * height };
+      const br = { x: brPct.x * width, y: brPct.y * height };
+      const bl = { x: blPct.x * width, y: blPct.y * height };
+
+      const widthBottom = Math.sqrt(Math.pow(br.x - bl.x, 2) + Math.pow(br.y - bl.y, 2));
+      const widthTop = Math.sqrt(Math.pow(tr.x - tl.x, 2) + Math.pow(tr.y - tl.y, 2));
+      const maxWidth = Math.max(widthBottom, widthTop);
+
+      const heightRight = Math.sqrt(Math.pow(tr.x - br.x, 2) + Math.pow(tr.y - br.y, 2));
+      const heightLeft = Math.sqrt(Math.pow(tl.x - bl.x, 2) + Math.pow(tl.y - bl.y, 2));
+      const maxHeight = Math.max(heightRight, heightLeft);
+
+      const targetWidth = Math.round(maxWidth);
+      const targetHeight = Math.round(maxHeight);
+
+      let srcCoords = [
+        tl.x, tl.y,
+        tr.x, tr.y,
+        br.x, br.y,
+        bl.x, bl.y
+      ];
+      srcMat = cv.matFromArray(4, 1, cv.CV_32FC2, srcCoords);
+
+      let dstCoords = [
+        0, 0,
+        targetWidth, 0,
+        targetWidth, targetHeight,
+        0, targetHeight
+      ];
+      dstMat = cv.matFromArray(4, 1, cv.CV_32FC2, dstCoords);
+
+      M = cv.getPerspectiveTransform(srcMat, dstMat);
+      let dsize = new cv.Size(targetWidth, targetHeight);
+      dst = new cv.Mat();
+      cv.warpPerspective(src, dst, M, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+
+      const warpedCanvas = document.createElement('canvas');
+      cv.imshow(warpedCanvas, dst);
+
+      let finalDataUrl = warpedCanvas.toDataURL('image/png');
+
+      if (targetFilter !== 'original') {
+        const tempImg = new Image();
+        tempImg.src = finalDataUrl;
+        await new Promise<void>((resolve) => {
+          tempImg.onload = () => resolve();
+        });
+
+        filterSrc = cv.imread(tempImg);
+        filterDst = new cv.Mat();
+
+        if (targetFilter === 'grayscale') {
+          cv.cvtColor(filterSrc, filterDst, cv.COLOR_RGBA2GRAY, 0);
+        } else if (targetFilter === 'bw') {
+          gray = new cv.Mat();
+          cv.cvtColor(filterSrc, gray, cv.COLOR_RGBA2GRAY, 0);
+          blurred = new cv.Mat();
+          let ksize = new cv.Size(5, 5);
+          cv.GaussianBlur(gray, blurred, ksize, 0, 0, cv.BORDER_DEFAULT);
+          cv.adaptiveThreshold(
+            blurred,
+            filterDst,
+            255,
+            cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv.THRESH_BINARY,
+            15,
+            3
+          );
+        } else if (targetFilter === 'magic-color') {
+          filterSrc.convertTo(filterDst, -1, 1.35, 20);
+        }
+
+        const resCanvas = document.createElement('canvas');
+        cv.imshow(resCanvas, filterDst);
+        finalDataUrl = resCanvas.toDataURL('image/png');
+      }
+
+      return {
+        outputDataUrl: finalDataUrl,
+        width: targetWidth,
+        height: targetHeight
+      };
+    } finally {
+      if (src) src.delete();
+      if (srcMat) srcMat.delete();
+      if (dstMat) dstMat.delete();
+      if (M) M.delete();
+      if (dst) dst.delete();
+      if (filterSrc) filterSrc.delete();
+      if (filterDst) filterDst.delete();
+      if (gray) gray.delete();
+      if (blurred) blurred.delete();
+    }
+  };
+
+  const handleBatchAutoCropAndExport = async () => {
+    if (!file || !fileUrl) return;
+    if (!checkOpenCVReady()) {
+      alert("OpenCV Engine is not loaded or ready yet. Please try again in a few seconds.");
+      return;
+    }
+    try {
+      setProcessing(true);
+      setBatchProgress({ current: 0, total: pageCount });
+      setProgressText(`Preparing batch document scan for ${pageCount} pages...`);
+
+      const loadingTask = pdfjsLib.getDocument({ url: fileUrl });
+      const doc = await loadingTask.promise;
+
+      let currentPagesData = { ...pagesData };
+
+      for (let i = 0; i < pageCount; i++) {
+        setBatchProgress({ current: i + 1, total: pageCount });
+        setProgressText(`Auto-cropping and filtering page ${i + 1} of ${pageCount}...`);
+
+        const page = await doc.getPage(i + 1);
+        const viewport = page.getViewport({ scale: 2.0 });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error(`Failed to create 2D context for page ${i + 1}`);
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: ctx, viewport } as any).promise;
+
+        const variations = findDocumentEdges(canvas);
+        const selectedCorners = (variations && variations.length > 0) ? variations[0] : [
+          { x: 0.1, y: 0.1 },
+          { x: 0.9, y: 0.1 },
+          { x: 0.9, y: 0.9 },
+          { x: 0.1, y: 0.9 }
+        ];
+
+        const targetFilter = filter || 'original';
+        const warpResult = await performOfflineWarpAndFilter(canvas, selectedCorners, targetFilter);
+
+        currentPagesData[i] = {
+          corners: selectedCorners,
+          handles: selectedCorners,
+          croppedImage: warpResult.outputDataUrl,
+          croppedCanvasData: warpResult.outputDataUrl,
+          filteredImage: warpResult.outputDataUrl,
+          croppedWidth: warpResult.width,
+          croppedHeight: warpResult.height,
+          filter: targetFilter,
+          cropVariations: variations,
+          selectedVariationIndex: 0,
+          isEdited: true
+        };
+
+        await new Promise(r => setTimeout(r, 20));
+      }
+
+      setPagesData(currentPagesData);
+
+      const updatedCache = currentPagesData[currentPage];
+      if (updatedCache) {
+        setCorners(updatedCache.corners);
+        setCroppedImage(updatedCache.croppedImage);
+        setFilteredImage(updatedCache.filteredImage);
+        setCroppedWidth(updatedCache.croppedWidth);
+        setCroppedHeight(updatedCache.croppedHeight);
+        setFilter(updatedCache.filter);
+        setShowPreview(true);
+        if (updatedCache.cropVariations) {
+          setCropVariations(updatedCache.cropVariations);
+          setSelectedVariationIndex(updatedCache.selectedVariationIndex ?? 0);
+        }
+      }
+
+      setProgressText("Finalizing and compiling final PDF document...");
+      const pdfDoc = await PDFDocument.create();
+
+      const originalPdfBytes = await file.arrayBuffer();
+      const originalPdfDoc = await PDFDocument.load(originalPdfBytes);
+
+      for (let i = 0; i < pageCount; i++) {
+        setProgressText(`Stitching compiled page ${i + 1} of ${pageCount}...`);
+        const item = currentPagesData[i];
+
+        if (item && item.isEdited && item.croppedCanvasData) {
+          const response = await fetch(item.croppedCanvasData);
+          const arrayBuffer = await response.arrayBuffer();
+          const embeddedPng = await pdfDoc.embedPng(arrayBuffer);
+          const { width, height } = embeddedPng.scale(1.0);
+          const pdfPage = pdfDoc.addPage([width, height]);
+          pdfPage.drawImage(embeddedPng, {
+            x: 0,
+            y: 0,
+            width,
+            height
+          });
+        } else {
+          const [copiedPage] = await pdfDoc.copyPages(originalPdfDoc, [i]);
+          pdfDoc.addPage(copiedPage);
+        }
+      }
+
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const pdfLocalUrl = URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = pdfLocalUrl;
+      const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+      link.download = `${baseName}_batch_scanned.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTimeout(() => URL.revokeObjectURL(pdfLocalUrl), 2000);
+
+    } catch (err: any) {
+      console.error("Batch processing failed:", err);
+      alert("Batch auto-cropping failed: " + (err.message || err));
+    } finally {
+      setProcessing(false);
+      setBatchProgress(null);
+      setProgressText("");
+    }
   };
 
   // Scale interactive overlays based on displayed sizing bounds
@@ -305,11 +625,20 @@ export default function SmartScannerTool({
         setCroppedWidth(cached.croppedWidth);
         setCroppedHeight(cached.croppedHeight);
         setFilter(cached.filter);
+        setShowPreview(!!cached.croppedImage);
+        if (cached.cropVariations) {
+          setCropVariations(cached.cropVariations);
+          setSelectedVariationIndex(cached.selectedVariationIndex ?? 0);
+        } else {
+          setCropVariations([cached.corners]);
+          setSelectedVariationIndex(0);
+        }
       } else {
         // Reset crop steps
         setCroppedImage(null);
         setFilteredImage(null);
         setFilter('original');
+        setShowPreview(false);
 
         // Perform Auto Detect asynchronously
         setTimeout(() => {
@@ -333,6 +662,7 @@ export default function SmartScannerTool({
     setCroppedImage(null);
     setFilteredImage(null);
     setFilter('original');
+    setShowPreview(false);
     setPagesData({});
     
     try {
@@ -482,8 +812,89 @@ export default function SmartScannerTool({
     tempImg.src = sourceImage;
   };
 
+  // Rotate clockwise 90 degrees
+  const handleRotate = async () => {
+    if (!sourceImage) return;
+    try {
+      setProcessing(true);
+      setProgressText('Rotating page 90° clockwise...');
+
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = (e) => reject(e);
+        img.src = sourceImage;
+      });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalHeight;
+      canvas.height = img.naturalWidth;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not get canvas context');
+
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+
+      const rotatedUrl = canvas.toDataURL('image/png');
+      
+      setOriginalSize({ width: canvas.width, height: canvas.height });
+      setSourceImage(rotatedUrl);
+
+      setCorners(prev => {
+        if (prev.length !== 4) return prev;
+        const rotated = prev.map(pt => ({
+          x: 1 - pt.y,
+          y: pt.x
+        }));
+        return sortPoints(rotated);
+      });
+
+      setCropVariations(prevVariations => {
+        return prevVariations.map(variation => {
+          if (variation.length !== 4) return variation;
+          const rotated = variation.map(pt => ({
+            x: 1 - pt.y,
+            y: pt.x
+          }));
+          return sortPoints(rotated);
+        });
+      });
+
+      // Clear any previous crop edits to allow adjusting again on the rotated state
+      setCroppedImage(null);
+      setFilteredImage(null);
+
+    } catch (err) {
+      console.error('Failed to rotate document:', err);
+    } finally {
+      setProcessing(false);
+      setProgressText('');
+    }
+  };
+
+  // Reset handles to 105% outer boundary mapping
+  const handleCropFree = () => {
+    setCorners([
+      { x: 0, y: 0 },   // TL
+      { x: 1, y: 0 },   // TR
+      { x: 1, y: 1 },   // BR
+      { x: 0, y: 1 }    // BL
+    ]);
+  };
+
+  // Force re-detection or layout fallback reset
+  const handleRetakeReset = () => {
+    if (checkOpenCVReady()) {
+      handleAutoDetectClick();
+    } else {
+      generateDefaultCorners();
+    }
+  };
+
   // Perform Perspective Crop Warp
-  const handleApplyCrop = async () => {
+  const handleApplyCrop = async (shouldShowPreview: boolean = true) => {
     if (!checkOpenCVReady() || !sourceImage || corners.length !== 4) return;
 
     let src: any = null;
@@ -557,6 +968,13 @@ export default function SmartScannerTool({
       setCroppedWidth(targetWidth);
       setCroppedHeight(targetHeight);
       setCroppedImage(outputDataUrl);
+      
+      if (shouldShowPreview) {
+        setShowPreview(true);
+      } else {
+        setJustSaved(true);
+        setTimeout(() => setJustSaved(false), 1500);
+      }
 
       // Instantly synchronize results back to pages cache
       saveCurrentPageState(currentPage, {
@@ -564,7 +982,10 @@ export default function SmartScannerTool({
         croppedWidth: targetWidth,
         croppedHeight: targetHeight,
         filteredImage: outputDataUrl, // default until filter process updates
-        filter: 'original'
+        filter: filter || 'original',
+        isEdited: true,
+        croppedCanvasData: outputDataUrl,
+        handles: corners
       });
 
     } catch (err: any) {
@@ -663,7 +1084,8 @@ export default function SmartScannerTool({
           // Sync filtered data to cache state
           saveCurrentPageState(currentPage, {
             filteredImage: filteredUrl,
-            filter
+            filter,
+            croppedCanvasData: filteredUrl
           });
         }
       } catch (err) {
@@ -672,7 +1094,8 @@ export default function SmartScannerTool({
           setFilteredImage(croppedImage);
           saveCurrentPageState(currentPage, {
             filteredImage: croppedImage,
-            filter
+            filter,
+            croppedCanvasData: croppedImage
           });
         }
       }
@@ -738,11 +1161,30 @@ export default function SmartScannerTool({
     const activeImage = filteredImage || croppedImage;
     if (!file) return;
 
+    const isPdfFile = file.type === 'application/pdf' || file.name.endsWith('.pdf');
+
     try {
       setProcessing(true);
       setProgressText(compileAllPages ? 'Compiling all pages & stitching dynamic perspective transformations...' : 'Stitching current cropped document sheet into PDF...');
 
       const pdfDoc = await PDFDocument.create();
+
+      // Ensure the current page's latest state is saved locally in our snapshot
+      const currentPagesSnapshot = {
+        ...pagesData,
+        [currentPage]: {
+          corners,
+          croppedImage,
+          filteredImage,
+          croppedWidth,
+          croppedHeight,
+          filter,
+          cropVariations,
+          selectedVariationIndex,
+          isEdited: pagesData[currentPage]?.isEdited || (croppedImage !== null),
+          croppedCanvasData: filteredImage || croppedImage || undefined
+        }
+      };
 
       if (compileAllPages && fileUrl && pageCount > 1) {
         // Save current active screen prior to full bundle compiling
@@ -752,44 +1194,68 @@ export default function SmartScannerTool({
           filteredImage,
           croppedWidth,
           croppedHeight,
-          filter
+          filter,
+          isEdited: pagesData[currentPage]?.isEdited || (croppedImage !== null),
+          croppedCanvasData: filteredImage || croppedImage || undefined
         });
 
-        // Initialize background compiler task
-        const loadingTask = pdfjsLib.getDocument({ url: fileUrl });
-        const doc = await loadingTask.promise;
+        if (isPdfFile) {
+          const originalPdfBytes = await file.arrayBuffer();
+          const originalPdfDoc = await PDFDocument.load(originalPdfBytes);
 
-        for (let i = 0; i < doc.numPages; i++) {
-          setProgressText(`Compiling page ${i + 1} of ${doc.numPages}...`);
+          for (let i = 0; i < pageCount; i++) {
+            setProgressText(`Compiling page ${i + 1} of ${pageCount}...`);
+            const item = currentPagesSnapshot[i];
 
-          let pageDataUrl: string | null = null;
-          const cached = i === currentPage ? {
-            croppedImage,
-            filteredImage
-          } : pagesData[i];
-
-          if (cached && (cached.filteredImage || cached.croppedImage)) {
-            pageDataUrl = cached.filteredImage || cached.croppedImage;
-          } else {
-            // Lazy render un-edited sheets as is to maintain document cohesion
-            const page = await doc.getPage(i + 1);
-            const viewport = page.getViewport({ scale: 2.0 });
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              canvas.width = viewport.width;
-              canvas.height = viewport.height;
-              await page.render({ canvasContext: ctx, viewport } as any).promise;
-              pageDataUrl = canvas.toDataURL('image/png');
+            if (item && item.isEdited && item.croppedCanvasData) {
+              const response = await fetch(item.croppedCanvasData);
+              const arrayBuffer = await response.arrayBuffer();
+              const embeddedPng = await pdfDoc.embedPng(arrayBuffer);
+              const { width, height } = embeddedPng.scale(1.0);
+              const pdfPage = pdfDoc.addPage([width, height]);
+              pdfPage.drawImage(embeddedPng, {
+                x: 0,
+                y: 0,
+                width,
+                height
+              });
+            } else {
+              // Copy original page directly to retain 100% of native vector metadata
+              const [copiedPage] = await pdfDoc.copyPages(originalPdfDoc, [i]);
+              pdfDoc.addPage(copiedPage);
             }
           }
+        } else {
+          // Fallback if uploading a direct set of images
+          for (let i = 0; i < pageCount; i++) {
+            setProgressText(`Embedding image page ${i + 1} of ${pageCount}...`);
+            const item = currentPagesSnapshot[i];
+            const pageDataUrl = item?.croppedCanvasData || item?.filteredImage || item?.croppedImage;
 
-          if (pageDataUrl) {
-            const response = await fetch(pageDataUrl);
+            if (pageDataUrl) {
+              const response = await fetch(pageDataUrl);
+              const arrayBuffer = await response.arrayBuffer();
+              const embeddedPng = await pdfDoc.embedPng(arrayBuffer);
+              const { width, height } = embeddedPng.scale(1.0);
+              const pdfPage = pdfDoc.addPage([width, height]);
+              pdfPage.drawImage(embeddedPng, {
+                x: 0,
+                y: 0,
+                width,
+                height
+              });
+            }
+          }
+        }
+      } else {
+        // Single page target compiling
+        if (isPdfFile) {
+          const item = currentPagesSnapshot[currentPage];
+          if (item && item.isEdited && item.croppedCanvasData) {
+            const response = await fetch(item.croppedCanvasData);
             const arrayBuffer = await response.arrayBuffer();
             const embeddedPng = await pdfDoc.embedPng(arrayBuffer);
             const { width, height } = embeddedPng.scale(1.0);
-
             const pdfPage = pdfDoc.addPage([width, height]);
             pdfPage.drawImage(embeddedPng, {
               x: 0,
@@ -797,27 +1263,30 @@ export default function SmartScannerTool({
               width,
               height
             });
+          } else {
+            // Copy original page directly from original PDF document representation
+            const originalPdfBytes = await file.arrayBuffer();
+            const originalPdfDoc = await PDFDocument.load(originalPdfBytes);
+            const [copiedPage] = await pdfDoc.copyPages(originalPdfDoc, [currentPage]);
+            pdfDoc.addPage(copiedPage);
           }
+        } else {
+          if (!activeImage) {
+            alert('Please flatten and crop the current document boundary first.');
+            return;
+          }
+          const response = await fetch(activeImage);
+          const arrayBuffer = await response.arrayBuffer();
+          const embeddedPng = await pdfDoc.embedPng(arrayBuffer);
+          const { width, height } = embeddedPng.scale(1.0);
+          const page = pdfDoc.addPage([width, height]);
+          page.drawImage(embeddedPng, {
+            x: 0,
+            y: 0,
+            width,
+            height
+          });
         }
-      } else {
-        // Single page target compiling
-        if (!activeImage) {
-          alert('Please flatten and crop the current document boundary first.');
-          return;
-        }
-        const response = await fetch(activeImage);
-        const arrayBuffer = await response.arrayBuffer();
-
-        const embeddedPng = await pdfDoc.embedPng(arrayBuffer);
-        const { width, height } = embeddedPng.scale(1.0);
-
-        const page = pdfDoc.addPage([width, height]);
-        page.drawImage(embeddedPng, {
-          x: 0,
-          y: 0,
-          width,
-          height
-        });
       }
 
       const pdfBytes = await pdfDoc.save();
@@ -966,321 +1435,497 @@ export default function SmartScannerTool({
               <li>Select filters to whiten paper backgrounds and optimize printer ink consumption!</li>
             </ul>
           </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Controls Column */}
-          <div className="lg:col-span-4 space-y-6">
-            {/* Sizing & Document Details card */}
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                  Target File Loaded
+        </div>      ) : !showPreview ? (
+        /* ==================== CROP & FILTER REVIEW INTERFACE (DARK THEME) ==================== */
+        <div className="flex flex-col min-h-[600px] bg-slate-950 text-slate-100 rounded-2xl overflow-hidden shadow-2xl border border-slate-900 select-none">
+          {/* Top Bar */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-900 bg-slate-900/50">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setFile(null);
+                  setSourceImage(null);
+                  setCroppedImage(null);
+                  setFilteredImage(null);
+                  setPagesData({});
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors cursor-pointer"
+                title="Change document file"
+                id="crop-review-back"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <h2 className="text-sm font-extrabold tracking-wide uppercase text-slate-200">
+                Adjust Borders
+              </h2>
+              {pagesData[currentPage]?.isEdited && (
+                <span className="text-[9px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-bold uppercase tracking-wider animate-fade-in">
+                  Saved
                 </span>
-                <button
-                  onClick={() => {
-                    setFile(null);
-                    setSourceImage(null);
-                    setCroppedImage(null);
-                    setFilteredImage(null);
-                    setPagesData({});
-                  }}
-                  className="text-xs text-rose-600 hover:underline font-semibold"
-                >
-                  Clear File
-                </button>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="p-3 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg shrink-0">
-                  <FileText className="w-5 h-5 text-emerald-600" />
-                </div>
-                <div className="overflow-hidden">
-                  <p className="text-sm font-bold text-slate-900 dark:text-slate-200 truncate" title={file.name}>
-                    {file.name}
-                  </p>
-                  <p className="text-xs font-mono text-slate-500 mt-0.5">
-                    {(file.size / (1024 * 1024)).toFixed(2)} MB • {pageCount} {pageCount === 1 ? 'page' : 'pages'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Multi Page pdf controller */}
-              {pageCount > 1 && (
-                <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-3">
-                  <button
-                    onClick={handlePrevPage}
-                    disabled={currentPage === 0 || processing}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-750 disabled:opacity-50 text-xs font-bold transition-all cursor-pointer"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5" /> Previous
-                  </button>
-                  <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300">
-                    Page {currentPage + 1} of {pageCount}
-                  </span>
-                  <button
-                    onClick={handleNextPage}
-                    disabled={currentPage === pageCount - 1 || processing}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-750 disabled:opacity-50 text-xs font-bold transition-all cursor-pointer"
-                  >
-                    Next <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
               )}
             </div>
 
-            {/* Steps & Commands card */}
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-5">
-              {!croppedImage ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-150 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-extrabold text-xs">
-                      1
-                    </span>
-                    <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                      Step 1: Frame Boundary
-                    </h3>
-                  </div>
+            {pageCount > 1 && (
+              <div className="flex items-center gap-2.5 bg-slate-900 px-3 py-1 rounded-full border border-slate-800">
+                <button
+                  onClick={handlePrevPage}
+                  disabled={currentPage === 0 || processing}
+                  className="text-slate-400 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
+                  id="crop-review-prev-page"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-xs font-mono font-bold text-slate-300">
+                  {currentPage + 1} / {pageCount}
+                </span>
+                <button
+                  onClick={handleNextPage}
+                  disabled={currentPage === pageCount - 1 || processing}
+                  className="text-slate-400 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
+                  id="crop-review-next-page"
+                >
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-normal">
-                    Finetune the 4 draggable corner targets on the visual sheet. The boundaries scale dynamically and respond perfectly to screen size adjustments.
-                  </p>
-
-                  <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
-                    <button
-                      onClick={handleAutoDetectClick}
-                      disabled={!opencvLoaded}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-emerald-200 dark:border-emerald-950/40 bg-emerald-50/40 dark:bg-emerald-950/10 text-emerald-700 dark:text-emerald-400 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/20 font-bold text-xs cursor-pointer transition-colors"
-                    >
-                      <Compass className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                      Auto-Detect
-                    </button>
-                    <button
-                      onClick={generateDefaultCorners}
-                      className="flex items-center justify-center gap-1.5 px-4 py-2.5 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 hover:bg-slate-100 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold cursor-pointer transition-colors"
-                    >
-                      <RotateCcw className="w-4 h-4" /> Reset
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={handleApplyCrop}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm text-sm cursor-pointer transition-colors"
-                  >
-                    <Crop className="w-4 h-4" /> Flatten & Crop Perspective
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-5">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-150 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-extrabold text-xs">
-                      2
-                    </span>
-                    <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                      Step 2: Clean & Filter
-                    </h3>
-                  </div>
-
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-normal">
-                    Choose styling filters to remove environmental shadow gradients and improve printer readability.
-                  </p>
-
-                  {/* Filter Select grid */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => setFilter('original')}
-                      className={`px-3 py-2 text-xs font-bold rounded-lg border text-center cursor-pointer transition-all ${
-                        filter === 'original'
-                          ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-500 text-emerald-700 dark:text-emerald-400'
-                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
-                      }`}
-                    >
-                      Original
-                    </button>
-                    <button
-                      onClick={() => setFilter('grayscale')}
-                      className={`px-3 py-2 text-xs font-bold rounded-lg border text-center cursor-pointer transition-all ${
-                        filter === 'grayscale'
-                          ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-500 text-emerald-700 dark:text-emerald-400'
-                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
-                      }`}
-                    >
-                      Grayscale
-                    </button>
-                    <button
-                      onClick={() => setFilter('bw')}
-                      className={`px-3 py-2 text-xs font-bold rounded-lg border text-center cursor-pointer transition-all ${
-                        filter === 'bw'
-                          ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-500 text-emerald-700 dark:text-emerald-400'
-                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
-                      }`}
-                    >
-                      Magic B&W
-                    </button>
-                    <button
-                      onClick={() => setFilter('magic-color')}
-                      className={`px-3 py-2 text-xs font-bold rounded-lg border text-center cursor-pointer transition-all relative ${
-                        filter === 'magic-color'
-                          ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-500 text-emerald-700 dark:text-emerald-400'
-                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span className="absolute -top-1.5 -right-1 flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                      </span>
-                      Magic Color
-                    </button>
-                  </div>
-
-                  <div className="rounded-lg bg-slate-55 border border-slate-100 p-2.5 dark:bg-slate-950/25 dark:border-slate-850">
-                    <p className="text-[10px] text-slate-500 italic flex items-center gap-1.5 leading-snug">
-                      <Sparkle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      {filter === 'bw' 
-                        ? 'Adaptive Gaussian limits noise spots and renders high-definition print text.' 
-                        : filter === 'magic-color' 
-                        ? 'Preserves colored signatures, seals, or ink drawings while whitening standard margins.'
-                        : filter === 'grayscale' 
-                        ? 'Removes blue, green, and red hues into absolute black-and-grey gradients.' 
-                        : 'Displays native background pixel values without enhancement.'}
-                    </p>
-                  </div>
-
-                  {/* Multi-page vs single page compiling triggers */}
-                  <div className="flex flex-col gap-2 pt-3 border-t border-slate-100 dark:border-slate-800/80">
-                    {pageCount > 1 && (
-                      <button
-                        onClick={() => handleDownloadPdf(true)}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-lg shadow cursor-pointer transition-all"
-                      >
-                        <FileCheck2 className="w-4 h-4 animate-bounce" /> Export Full Document ({pageCount} pages)
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleDownloadPdf(false)}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 dark:bg-slate-800 hover:opacity-90 text-white font-bold text-xs rounded-lg shadow-xs cursor-pointer transition-all"
-                    >
-                      <FileDown className="w-4 h-4 text-emerald-500" /> Export Current Page PDF
-                    </button>
-                    <button
-                      onClick={handleDownloadPng}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-250 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 text-slate-800 dark:text-slate-200 font-bold text-xs rounded-lg cursor-pointer transition-colors"
-                    >
-                      <Download className="w-4 h-4" /> Download as PNG
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setCroppedImage(null);
-                      setFilteredImage(null);
-                      setFilter('original');
-                      if (sourceImage) {
-                        const img = new Image();
-                        img.onload = () => {
-                          setOriginalSize({ width: img.naturalWidth, height: img.naturalHeight });
-                          generateDefaultCorners();
-                        };
-                        img.src = sourceImage;
-                      }
-                    }}
-                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-bold cursor-pointer transition-colors"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5 mr-1" /> Re-scan / Adjust corners
-                  </button>
-                </div>
+            <div className="flex items-center gap-2">
+              {pageCount > 1 && (
+                <button
+                  onClick={handleBatchAutoCropAndExport}
+                  disabled={processing}
+                  className="hidden md:flex items-center gap-1.5 px-3 py-1 text-xs font-bold bg-gradient-to-r from-cyan-500 to-indigo-500 hover:opacity-90 active:scale-95 text-slate-950 rounded-lg shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                  id="btn-batch-header"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+                  <span>Auto-Crop All & Export</span>
+                </button>
               )}
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 uppercase tracking-widest">
+                WASM Core Active
+              </span>
             </div>
           </div>
 
-          {/* Interactive Workspace Area */}
-          <div className="lg:col-span-8 flex flex-col items-center justify-center bg-slate-100/50 dark:bg-slate-950/40 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 min-h-[500px]">
-            {!croppedImage ? (
-              <div className="space-y-4 text-center flex flex-col items-center">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center gap-1.5 shadow-xs select-none">
-                  <Maximize className="w-3.5 h-3.5 text-emerald-500" /> 
-                  ALIGN COORDINATE HANDLES TO PAGES
-                </span>
+          {/* Center Stage (The Image) */}
+          <div className="flex-1 flex items-center justify-center p-6 bg-slate-900/90 overflow-hidden relative min-h-[400px]">
+            {sourceImage ? (
+              <div className="w-full h-full flex items-center justify-center overflow-hidden p-4">
+                {/* Shrink-Wrap Wrapper Strategy */}
+                <div 
+                  className="relative inline-block max-w-full max-h-[50vh] shadow-2xl select-none" 
+                  ref={containerRef}
+                  id="shrink-wrap-wrapper"
+                >
+                  <img
+                    ref={imageRef}
+                    src={sourceImage}
+                    onLoad={updateDisplaySize}
+                    className="block max-h-[50vh] max-w-full h-auto w-auto pointer-events-none select-none rounded shadow-2xl border border-slate-805"
+                    alt="Source document preview"
+                    id="shrink-wrap-image"
+                  />
 
-                {sourceImage && (
-                  <div 
-                    className="relative inline-block max-w-full max-h-[60vh] shadow-lg rounded-lg overflow-hidden select-none" 
-                    ref={containerRef}
-                  >
-                    <img
-                      ref={imageRef}
-                      src={sourceImage}
-                      onLoad={updateDisplaySize}
-                      className="block max-h-[60vh] max-w-full h-auto w-auto pointer-events-none select-none"
-                      alt="Source document preview"
-                    />
+                  {/* SVG Boundary Overlay */}
+                  {displaySize.width > 0 && displaySize.height > 0 && corners.length === 4 && (
+                    <svg
+                      className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                      width={displaySize.width}
+                      height={displaySize.height}
+                      id="svg-boundary-overlay"
+                    >
+                      {/* Interactive quadrilateral boundary box connecting point vectors with brand Cyan */}
+                      <polygon
+                        points={polygonPointsString}
+                        className="fill-cyan-500/15 stroke-cyan-500 stroke-[3.5] pointer-events-none"
+                        style={{ strokeDasharray: '4 3' }}
+                      />
 
-                    {/* Draggable vector handles overlay */}
-                    {displaySize.width > 0 && displaySize.height > 0 && corners.length === 4 && (
-                      <svg
-                        className="absolute top-0 left-0 w-full h-full pointer-events-none"
-                        width={displaySize.width}
-                        height={displaySize.height}
-                      >
-                        {/* Interactive quadrilateral boundary box connecting point vectors */}
-                        <polygon
-                          points={polygonPointsString}
-                          className="fill-emerald-500/10 stroke-emerald-500 stroke-[3] cursor-default transition-all"
-                          style={{ strokeDasharray: '6 4' }}
-                        />
-
-                        {/* Interactive drag node controls */}
-                        {corners.map((pt, idx) => (
-                          <g key={idx}>
-                            {/* Inner circle handle shadow */}
-                            <circle
-                              cx={pt.x * scaleX}
-                              cy={pt.y * scaleY}
-                              r="16"
-                              className="fill-transparent hover:fill-emerald-500/20 active:fill-emerald-500/35 cursor-move transition-colors duration-150 pointer-events-auto"
-                              style={{ pointerEvents: 'auto' }}
-                              onMouseDown={(e) => handleMouseDown(idx, e)}
-                              onTouchStart={(e) => handleTouchStart(idx, e)}
-                            />
-                            {/* Stylized visible point indicator */}
-                            <circle
-                              cx={pt.x * scaleX}
-                              cy={pt.y * scaleY}
-                              r="7"
-                              className="fill-emerald-600 stroke-white stroke-2 shadow-md pointer-events-none"
-                            />
-                            {/* Visual tag overlay */}
-                            <text
-                              x={pt.x * scaleX}
-                              y={pt.y * scaleY - 14}
-                              className="text-[10px] font-extrabold fill-emerald-800 dark:fill-emerald-400 font-mono select-none pointer-events-none shadow"
-                              textAnchor="middle"
-                            >
-                              {idx === 0 ? 'TL' : idx === 1 ? 'TR' : idx === 2 ? 'BR' : 'BL'}
-                            </text>
-                          </g>
-                        ))}
-                      </svg>
-                    )}
-                  </div>
-                )}
+                      {/* Interactive Drag Handles with Cyan Theme */}
+                      {corners.map((pt, idx) => (
+                        <g key={idx}>
+                          {/* Large touch target handle */}
+                          <circle
+                            cx={pt.x * scaleX}
+                            cy={pt.y * scaleY}
+                            r="22"
+                            className="fill-transparent hover:fill-cyan-400/20 active:fill-cyan-400/35 cursor-move transition-colors duration-150 pointer-events-auto"
+                            style={{ pointerEvents: 'auto' }}
+                            onMouseDown={(e) => handleMouseDown(idx, e)}
+                            onTouchStart={(e) => handleTouchStart(idx, e)}
+                            id={`handle-touch-target-${idx}`}
+                          />
+                          {/* Visible Cyan Node indicator */}
+                          <circle
+                            cx={pt.x * scaleX}
+                            cy={pt.y * scaleY}
+                            r="8"
+                            className="fill-cyan-400 stroke-white stroke-2 shadow-xl pointer-events-none"
+                            id={`handle-visible-${idx}`}
+                          />
+                          {/* Node label helper */}
+                          <text
+                            x={pt.x * scaleX}
+                            y={pt.y * scaleY - 14}
+                            className="text-[10px] font-extrabold fill-cyan-400 font-mono select-none pointer-events-none"
+                            textAnchor="middle"
+                            style={{ filter: 'drop-shadow(0px 1px 2px rgba(0,0,0,0.9))' }}
+                          >
+                            {idx === 0 ? 'TL' : idx === 1 ? 'TR' : idx === 2 ? 'BR' : 'BL'}
+                          </text>
+                        </g>
+                      ))}
+                    </svg>
+                  )}
+                </div>
               </div>
             ) : (
-              <div className="space-y-4 text-center flex flex-col items-center select-none">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center gap-1.5 shadow-xs">
-                  <Check className="w-3.5 h-3.5 text-emerald-500" />
-                  PERSPECTIVE CORRECTED SCAN ({croppedWidth} x {croppedHeight} px)
-                </span>
+              <div className="flex flex-col items-center justify-center space-y-2">
+                <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
+                <p className="text-xs text-slate-400">Rendering visual sheet...</p>
+              </div>
+            )}
+          </div>
 
-                <div className="relative inline-block rounded-lg shadow-md bg-white dark:bg-slate-900 p-2 border border-slate-200 dark:border-slate-800 overflow-hidden">
-                  <img
-                    src={filteredImage || croppedImage}
-                    className="max-h-[60vh] max-w-full h-auto w-auto object-contain rounded"
-                    alt="Flattened results"
-                  />
+          {/* Fixed Bottom Action Bar */}
+          <div className="border-t border-slate-900 bg-slate-950 p-4 space-y-4 shadow-2xl">
+            {/* Row 1: Filter Selector */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2">
+              <span className="text-[10px] font-extrabold tracking-wider text-slate-400 uppercase select-none">
+                CURRENT FILTER
+              </span>
+              <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800" id="filter-selection-buttons">
+                {[
+                  { id: 'original', label: 'Original' },
+                  { id: 'magic-color', label: 'Vibrant' },
+                  { id: 'bw', label: 'Magic B&W' }
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => {
+                      setFilter(opt.id as FilterType);
+                    }}
+                    className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                      filter === opt.id
+                        ? 'bg-cyan-500 text-slate-950 font-bold shadow-md'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    id={`filter-opt-${opt.id}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Crop Variations Selector */}
+            {cropVariations.length > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2 pt-2 border-t border-slate-900/60 pb-1">
+                <div className="flex flex-col items-start">
+                  <span className="text-[10px] font-extrabold tracking-wider text-cyan-400 uppercase select-none">
+                    CROP VARIATIONS
+                  </span>
+                  <span className="text-[9px] text-slate-500">
+                    Select a variation to automatically snap the crop boundary handles
+                  </span>
+                </div>
+                <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800" id="crop-variations-buttons">
+                  {cropVariations.map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setSelectedVariationIndex(idx);
+                        setCorners(cropVariations[idx]);
+                        saveCurrentPageState(currentPage, {
+                          corners: cropVariations[idx],
+                          selectedVariationIndex: idx
+                        });
+                      }}
+                      className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                        selectedVariationIndex === idx
+                          ? 'bg-cyan-500 text-slate-950 font-bold shadow-md'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                      }`}
+                      id={`crop-variation-btn-${idx}`}
+                    >
+                      Option {idx + 1}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
+
+            {/* Row 2: Action Tools */}
+            <div className="grid grid-cols-5 gap-3">
+              <button
+                onClick={handleRotate}
+                className="flex flex-col items-center justify-center py-2.5 rounded-xl border border-slate-800 bg-slate-900/50 hover:bg-slate-900 hover:text-white text-slate-300 transition-all cursor-pointer group"
+                title="Rotate image 90 degrees clockwise"
+                id="action-rotate"
+              >
+                <RotateCcw className="w-4.5 h-4.5 text-slate-450 group-hover:text-cyan-400 transition-colors transform rotate-180" />
+                <span className="text-[10px] mt-1 font-bold">Rotate</span>
+              </button>
+
+              <button
+                onClick={handleCropFree}
+                className="flex flex-col items-center justify-center py-2.5 rounded-xl border border-slate-800 bg-slate-900/50 hover:bg-slate-900 hover:text-white text-slate-300 transition-all cursor-pointer group"
+                title="Reset 4 handles to absolute image corners (0-100%)"
+                id="action-crop-free"
+              >
+                <Crop className="w-4.5 h-4.5 text-slate-450 group-hover:text-cyan-400 transition-colors" />
+                <span className="text-[10px] mt-1 font-bold">Crop Free</span>
+              </button>
+
+              <button
+                onClick={handleRetakeReset}
+                className="flex flex-col items-center justify-center py-2.5 rounded-xl border border-slate-800 bg-slate-900/50 hover:bg-slate-900 hover:text-white text-slate-300 transition-all cursor-pointer group"
+                title="Re-run edge auto-alignment"
+                id="action-retake-reset"
+              >
+                <RefreshCw className="w-4.5 h-4.5 text-slate-450 group-hover:text-cyan-400 transition-colors" />
+                <span className="text-[10px] mt-1 font-bold">Retake / Reset</span>
+              </button>
+
+              <button
+                onClick={() => handleApplyCrop(false)}
+                disabled={processing}
+                className={`flex flex-col items-center justify-center py-2.5 rounded-xl border transition-all cursor-pointer group col-span-1 ${
+                  justSaved
+                    ? 'border-emerald-500 bg-emerald-950/45 text-emerald-400 animate-pulse'
+                    : 'border-slate-800 bg-slate-900/50 hover:bg-slate-900 text-slate-300 hover:text-emerald-400'
+                }`}
+                title="Save crop settings for this page"
+                id="action-save-crop-page"
+              >
+                <Check className={`w-4.5 h-4.5 transition-colors ${justSaved ? 'text-emerald-400 font-bold' : 'text-slate-450 group-hover:text-emerald-500'}`} />
+                <span className="text-[10px] mt-1 font-bold">{justSaved ? 'Saved!' : 'Save'}</span>
+              </button>
+
+              <button
+                onClick={() => handleDownloadPdf(true)}
+                disabled={processing}
+                className="flex flex-col items-center justify-center py-2.5 rounded-xl bg-gradient-to-br from-cyan-500 to-indigo-500 hover:opacity-90 disabled:opacity-50 text-slate-950 font-extrabold text-xs transition-all shadow-md cursor-pointer col-span-1 select-none group"
+                title="Compile & Download full PDF"
+                id="action-export-multipage"
+              >
+                <FileDown className="w-4.5 h-4.5 text-slate-950 group-hover:scale-110 transition-transform" />
+                <span className="text-[10px] mt-1 font-extrabold">Export</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ==================== PREVIEW SCREEN (POLISHED RESULTS) ==================== */
+        <div className="flex flex-col min-h-[550px] bg-slate-50 dark:bg-slate-900 rounded-2xl overflow-hidden shadow-xl border border-slate-200 dark:border-slate-800 select-none">
+          {/* Preview Top Bar */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-805 bg-white dark:bg-slate-900/60 backdrop-blur-md">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowPreview(false)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-750 dark:text-slate-250 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs font-bold transition-colors cursor-pointer"
+                id="preview-back-to-borders"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Adjust Borders
+              </button>
+              <h1 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
+                Preview Flattened Scan
+              </h1>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {pageCount > 1 && (
+                <span className="text-xs font-bold font-mono px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800">
+                  Page {currentPage + 1} of {pageCount}
+                </span>
+              )}
+              <button
+                onClick={() => {
+                  setFile(null);
+                  setSourceImage(null);
+                  setCroppedImage(null);
+                  setFilteredImage(null);
+                  setPagesData({});
+                }}
+                className="text-xs text-rose-600 hover:underline font-bold cursor-pointer"
+                id="preview-change-file"
+              >
+                Change File
+              </button>
+            </div>
+          </div>
+
+          {/* Content Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 items-start">
+            {/* Output Center Preview Frame */}
+            <div className="lg:col-span-7 flex flex-col items-center justify-center p-6 bg-slate-100/50 dark:bg-slate-950/45 rounded-xl border border-slate-200 dark:border-slate-801 min-h-[400px]">
+              {filteredImage || croppedImage ? (
+                <div className="relative inline-block rounded-xl shadow-2xl bg-white dark:bg-slate-900 p-2 border border-slate-200 dark:border-slate-800 overflow-hidden max-w-full">
+                  <img
+                    src={filteredImage || croppedImage || undefined}
+                    className="max-h-[55vh] max-w-full h-auto w-auto object-contain rounded"
+                    alt="Flattened scanner result"
+                    id="preview-flattened-image"
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center space-y-2">
+                  <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+                  <p className="text-xs text-slate-500">Applying dynamic filters...</p>
+                </div>
+              )}
+              <p className="text-[10px] text-slate-400 mt-4 font-semibold uppercase tracking-wider select-none">
+                3D Perspective Corrected Output • {croppedWidth}x{croppedHeight} px
+              </p>
+            </div>
+
+            {/* Export & Actions Sidebar */}
+            <div className="lg:col-span-5 space-y-5">
+              {/* Filter Panel on Cropped View */}
+              <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+                <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  CURRENT FILTER
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Refine coloring presets for the clean flattened print sheet dynamically:
+                </p>
+
+                <div className="grid grid-cols-2 gap-2" id="preview-filter-selector">
+                  {[
+                    { id: 'original', label: 'Original' },
+                    { id: 'grayscale', label: 'Grayscale' },
+                    { id: 'bw', label: 'Magic B&W' },
+                    { id: 'magic-color', label: 'Vibrant' }
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => setFilter(opt.id as FilterType)}
+                      className={`px-3 py-2 text-xs font-bold rounded-lg border text-center cursor-pointer transition-all ${
+                        filter === opt.id
+                          ? 'bg-emerald-500 text-slate-950 border-emerald-500 font-bold shadow-xs'
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
+                      }`}
+                      id={`preview-filter-opt-${opt.id}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-950/40 text-[11px] text-slate-500 italic leading-snug">
+                  {filter === 'bw' 
+                    ? 'Adaptive Gaussian limits noise spots and renders high-definition print text.' 
+                    : filter === 'magic-color' 
+                    ? 'Preserves colored signatures, seals, or ink drawings while whitening standard margins.'
+                    : filter === 'grayscale' 
+                    ? 'Removes blue, green, and red hues into absolute black-and-grey gradients.' 
+                    : 'Displays native background pixel values without enhancement.'}
+                </div>
+              </div>
+
+              {/* Document Export Suite */}
+              <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+                <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  Export Document
+                </h3>
+
+                <div className="space-y-2.5">
+                  {pageCount > 1 && (
+                    <>
+                      <button
+                        onClick={() => handleDownloadPdf(true)}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-lg shadow-sm cursor-pointer transition-all"
+                        id="export-full-pdf"
+                        disabled={processing}
+                      >
+                        <FileCheck2 className="w-4 h-4" /> Export Full Document ({pageCount} pages)
+                      </button>
+
+                      <button
+                        onClick={handleBatchAutoCropAndExport}
+                        disabled={processing}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-cyan-600 to-indigo-650 hover:opacity-90 active:scale-[0.98] text-white font-bold text-sm rounded-lg shadow-md cursor-pointer transition-all border border-cyan-500/20"
+                        id="batch-autocrop-export"
+                      >
+                        <Sparkles className="w-4 h-4 text-cyan-300 animate-pulse" /> Auto-Crop All & Export
+                      </button>
+                    </>
+                  )}
+                  
+                  <button
+                    onClick={() => handleDownloadPdf(false)}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 dark:bg-slate-800 hover:opacity-90 text-white font-bold text-xs rounded-lg shadow-xs cursor-pointer transition-all"
+                    id="export-page-pdf"
+                    disabled={processing}
+                  >
+                    <FileDown className="w-4 h-4 text-emerald-500" /> Export Current Page PDF
+                  </button>
+                  
+                  <button
+                    onClick={handleDownloadPng}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-250 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-805 dark:text-slate-205 font-bold text-xs rounded-lg cursor-pointer transition-colors"
+                    id="export-png-download"
+                    disabled={processing}
+                  >
+                    <Download className="w-4 h-4 text-emerald-500" /> Download as PNG
+                  </button>
+                </div>
+
+                {pageCount > 1 && (
+                  <div className="pt-4 border-t border-slate-150 dark:border-slate-800/80 flex items-center justify-between gap-3">
+                    <button
+                      onClick={handlePrevPage}
+                      disabled={currentPage === 0 || processing}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-750 disabled:opacity-50 text-[11px] font-bold cursor-pointer transition-all"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" /> Previous Page
+                    </button>
+                    <button
+                      onClick={handleNextPage}
+                      disabled={currentPage === pageCount - 1 || processing}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-750 disabled:opacity-50 text-[11px] font-bold cursor-pointer transition-all"
+                    >
+                      Next Page <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Batch Processing Loading Overlay */}
+      {batchProgress && (
+        <div className="fixed inset-0 z-[110] flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md select-none">
+          <div className="bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl flex flex-col items-center gap-6 text-center max-w-sm mx-4 w-full">
+            <div className="relative flex items-center justify-center">
+              {/* Outer spinning border */}
+              <div className="w-16 h-16 rounded-full border-4 border border-slate-800 border-t-cyan-400 animate-spin shrink-0" />
+              <Sparkles className="w-6 h-6 text-cyan-400 animate-pulse absolute" />
+            </div>
+
+            <div className="space-y-1">
+              <h4 className="font-extrabold text-cyan-400 text-sm uppercase tracking-wider">
+                Batch Auto-Crop Active
+              </h4>
+              <p className="text-xs text-slate-300 font-medium">
+                Auto-cropping page <span className="font-mono text-cyan-400 text-sm font-bold">{batchProgress.current}</span> of <span className="font-mono text-slate-400 text-sm font-bold">{batchProgress.total}</span>
+              </p>
+            </div>
+
+            {/* Real Progress Bar */}
+            <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div
+                className="bg-cyan-500 h-full transition-all duration-300 ease-out shadow-[0_0_8px_#22d3ee]"
+                style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+              />
+            </div>
+
+            <div className="text-[10px] text-slate-400 bg-slate-950/50 px-3 py-1 rounded border border-slate-800/80 font-mono tracking-tight select-none">
+              WASM Core • Running OpenCV Perspective Warp
+            </div>
           </div>
         </div>
       )}
