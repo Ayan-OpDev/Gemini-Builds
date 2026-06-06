@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Shell from './components/Shell';
 import Dashboard from './components/Dashboard';
 import RemovePagesTool from './components/RemovePagesTool';
@@ -14,12 +14,49 @@ import OCRPDFTool from './components/OCRPDFTool';
 import LockPDFTool from './components/LockPDFTool';
 import UnlockPDFTool from './components/UnlockPDFTool';
 import SmartScannerTool from './components/SmartScannerTool';
+import SmartPrivacyRedactorTool from './components/SmartPrivacyRedactorTool';
+import MetadataPurifierTool from './components/MetadataPurifierTool';
+import VisualPDFDiffTool from './components/VisualPDFDiffTool';
+import FormGeneratorTool from './components/FormGeneratorTool';
+import AudiobookStudioTool from './components/AudiobookStudioTool';
+import WeaponWheel from './components/WeaponWheel';
 import { ToolId, RecentFile } from './types';
 
 export default function App() {
   const [activeTool, setActiveTool] = useState<ToolId>('dashboard');
   const [sessionFiles, setSessionFiles] = useState<Record<string, File>>({});
   const [activeFile, setActiveFile] = useState<File | null>(null);
+  const [weaponWheelActive, setWeaponWheelActive] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in input/textarea
+      if (
+        document.activeElement instanceof HTMLInputElement ||
+        document.activeElement instanceof HTMLTextAreaElement ||
+        document.activeElement?.isContentEditable
+      ) {
+        return;
+      }
+      if (e.key.toLowerCase() === 'z' && !e.repeat) {
+        e.preventDefault();
+        setWeaponWheelActive(true);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'z') {
+        setWeaponWheelActive(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   const handleSelectRecentFile = (recent: RecentFile) => {
     const file = sessionFiles[recent.id];
@@ -75,7 +112,13 @@ export default function App() {
   };
 
   return (
-    <Shell activeTool={activeTool} onSelectTool={handleSelectTool}>
+    <>
+      <WeaponWheel 
+        active={weaponWheelActive} 
+        onClose={() => setWeaponWheelActive(false)} 
+        onSelectTool={handleSelectTool} 
+      />
+      <Shell activeTool={activeTool} onSelectTool={handleSelectTool}>
       {activeTool === 'dashboard' ? (
         <Dashboard onSelectTool={handleSelectTool} onSelectRecentFile={handleSelectRecentFile} />
       ) : activeTool === 'remove-pages' ? (
@@ -156,6 +199,36 @@ export default function App() {
           initialFile={activeFile}
           onFileLoaded={(f, pc) => handleFileLoaded(f, 'scanner', pc)}
         />
+      ) : activeTool === 'redact-pdf' ? (
+        <SmartPrivacyRedactorTool
+          onBackToDashboard={navigateToDashboard}
+          initialFile={activeFile}
+          onFileLoaded={(f: File, pc: number) => handleFileLoaded(f, 'redact-pdf', pc)}
+        />
+      ) : activeTool === 'purify-metadata' ? (
+        <MetadataPurifierTool
+          onBackToDashboard={navigateToDashboard}
+          initialFile={activeFile}
+          onFileLoaded={(f: File, pc: number) => handleFileLoaded(f, 'purify-metadata', pc)}
+        />
+      ) : activeTool === 'compare-pdf' ? (
+        <VisualPDFDiffTool
+          onBackToDashboard={navigateToDashboard}
+          initialFile={activeFile}
+          onFileLoaded={(f: File, pc: number) => handleFileLoaded(f, 'compare-pdf', pc)}
+        />
+      ) : activeTool === 'form-generator' ? (
+        <FormGeneratorTool
+          onBackToDashboard={navigateToDashboard}
+          initialFile={activeFile}
+          onFileLoaded={(f: File, pc: number) => handleFileLoaded(f, 'form-generator', pc)}
+        />
+      ) : activeTool === 'audiobook-studio' ? (
+        <AudiobookStudioTool
+          onBackToDashboard={navigateToDashboard}
+          initialFile={activeFile}
+          onFileLoaded={(f: File, pc: number) => handleFileLoaded(f, 'audiobook-studio', pc)}
+        />
       ) : (
         <div id="unsupported-view-placeholder" className="text-center py-20 space-y-4 max-w-sm mx-auto">
           <div className="text-slate-400 font-bold mb-2">Upcoming Tool Module</div>
@@ -171,5 +244,6 @@ export default function App() {
         </div>
       )}
     </Shell>
+    </>
   );
 }

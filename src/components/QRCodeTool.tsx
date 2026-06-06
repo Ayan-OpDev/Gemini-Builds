@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
 import QRCode from 'qrcode';
-import FileUploadArea from './FileUploadArea';
+import { FileUploader } from './FileUploader';
 import ProcessingOverlay from './ProcessingOverlay';
 import {
   ChevronLeft,
@@ -345,11 +345,10 @@ export default function QRCodeTool({
               </p>
             </div>
           ) : (
-            <FileUploadArea
-              onFileSelected={handleFileSelected}
-              title="Upload PDF to embed QR code"
-              subtitle="Stamps QR codes dynamically into margins or grids on any sheet segment."
-            />
+            <FileUploader 
+            onFileSelected={(files) => handleFileSelected(files[0])} 
+            acceptType="pdf"
+          />
           )}
         </div>
       ) : (

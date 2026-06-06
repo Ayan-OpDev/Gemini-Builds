@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument } from '@cantoo/pdf-lib';
-import FileUploadArea from './FileUploadArea';
+import { FileUploader } from './FileUploader';
 import ProcessingOverlay from './ProcessingOverlay';
 import { 
   ChevronLeft, 
@@ -206,10 +206,9 @@ export default function LockPDFTool({
 
       {!file ? (
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-850 shadow-xs">
-          <FileUploadArea 
-            onFileSelected={handleFileSelected} 
-            title="Import PDF to Secure"
-            subtitle="Secure calculations occur entirely client-side. Your keys are never cached or uploaded."
+          <FileUploader 
+            onFileSelected={(files) => handleFileSelected(files[0])} 
+            acceptType="pdf"
           />
         </div>
       ) : (

@@ -104,5 +104,45 @@ export const TOOLS: Tool[] = [
     icon: 'Maximize',
     category: 'edit',
     isReady: true
+  },
+  {
+    id: 'redact-pdf',
+    name: 'Smart Privacy Redactor',
+    description: 'Automatically locate and permanently black out sensitive information such as PII and emails.',
+    icon: 'ShieldBan',
+    category: 'edit',
+    isReady: true
+  },
+  {
+    id: 'purify-metadata',
+    name: 'Metadata Editor & Purifier',
+    description: 'Edit metadata parameters or strip out all hidden tracking data, history, and author metadata for a completely clean file.',
+    icon: 'PaintBucket',
+    category: 'edit',
+    isReady: true
+  },
+  {
+    id: 'compare-pdf',
+    name: 'Visual PDF "Diff"',
+    description: 'Compare two PDFs side-by-side with automatic pixel-level visual highlights of any changes.',
+    icon: 'GitPullRequest',
+    category: 'view',
+    isReady: true
+  },
+  {
+    id: 'form-generator',
+    name: 'Interactive Form Generator',
+    description: 'Turn static flat PDFs into interactive forms using a drag-and-drop widget overlay.',
+    icon: 'FormInput',
+    category: 'edit',
+    isReady: true
+  },
+  {
+    id: 'audiobook-studio',
+    name: 'Audiobook Studio',
+    description: 'Convert and listen to your PDFs with real-time text-to-speech tracking and a native book reader UI.',
+    icon: 'Headphones',
+    category: 'view',
+    isReady: true
   }
 ];

@@ -22,7 +22,12 @@ import {
   FileSearch,
   LockKeyhole,
   Unlock,
-  Maximize
+  Maximize,
+  ShieldBan,
+  PaintBucket,
+  GitPullRequest,
+  FormInput,
+  Headphones
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -43,7 +48,12 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   FileSearch: FileSearch,
   LockKeyhole: LockKeyhole,
   Unlock: Unlock,
-  Maximize: Maximize
+  Maximize: Maximize,
+  ShieldBan: ShieldBan,
+  PaintBucket: PaintBucket,
+  GitPullRequest: GitPullRequest,
+  FormInput: FormInput,
+  Headphones: Headphones
 };
 
 const toolNameMap: Record<ToolId, string> = {
@@ -60,7 +70,12 @@ const toolNameMap: Record<ToolId, string> = {
   'ocr-pdf': 'OCR PDF (Extract Text)',
   'lock-pdf': 'Lock PDF (Protect)',
   'unlock-pdf': 'Unlock PDF (Decrypt)',
-  'scanner': 'Smart Scanner & Crop'
+  'scanner': 'Smart Scanner & Crop',
+  'redact-pdf': 'Smart Privacy Redactor',
+  'purify-metadata': 'Metadata Purifier',
+  'compare-pdf': 'Visual PDF "Diff"',
+  'form-generator': 'Interactive Form Generator',
+  'audiobook-studio': 'Audiobook Studio'
 };
 
 const formatSize = (bytes: number) => {

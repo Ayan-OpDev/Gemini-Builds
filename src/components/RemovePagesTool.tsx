@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
-import FileUploadArea from './FileUploadArea';
+import { FileUploader } from './FileUploader';
 import PDFThumbnail from './PDFThumbnail';
 import ProcessingOverlay from './ProcessingOverlay';
 import { 
@@ -256,7 +256,10 @@ export default function RemovePagesTool({
               </div>
             )}
 
-            <FileUploadArea onFileSelected={handleFileSelected} />
+            <FileUploader 
+            onFileSelected={(files) => handleFileSelected(files[0])} 
+            acceptType="pdf"
+          />
           </div>
         ) : (
           /* 2. Visual Grid Page Selection Mode */

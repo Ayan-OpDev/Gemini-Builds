@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument } from '@cantoo/pdf-lib';
-import FileUploadArea from './FileUploadArea';
+import { FileUploader } from './FileUploader';
 import ProcessingOverlay from './ProcessingOverlay';
 import { useLoadWASM } from '../hooks/useLoadWASM';
 import {
@@ -29,6 +29,118 @@ import {
 const pdfjsVersion = pdfjsLib.version || '6.0.227';
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
 
+const getOptimizedJpegBytes = async (sourceCanvas: HTMLCanvasElement): Promise<ArrayBuffer> => {
+  const MAX_DIMENSION = 1600;
+  let width = sourceCanvas.width;
+  let height = sourceCanvas.height;
+
+  // Scale down if the image exceeds standard document dimensions
+  if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+    const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
+    width = Math.round(width * ratio);
+    height = Math.round(height * ratio);
+  }
+
+  // Draw to a new scaled canvas
+  const scaledCanvas = document.createElement('canvas');
+  scaledCanvas.width = width;
+  scaledCanvas.height = height;
+  const ctx = scaledCanvas.getContext('2d');
+  
+  // Fill with white background to prevent transparent-to-black JPEG artifacts
+  if (ctx) {
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(sourceCanvas, 0, 0, width, height);
+  }
+
+  // Extract as 75% Quality JPEG
+  return new Promise((resolve, reject) => {
+    scaledCanvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob.arrayBuffer());
+      } else {
+        reject(new Error('Failed to create blob'));
+      }
+    }, 'image/jpeg', 0.75);
+  });
+};
+
+const getOptimizedUrlBytes = async (dataUrl: string): Promise<ArrayBuffer> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0);
+        try {
+          const buffer = await getOptimizedJpegBytes(canvas);
+          resolve(buffer);
+        } catch (e) {
+          reject(e);
+        }
+      } else {
+        reject(new Error('Canvas context failed'));
+      }
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+};
+
+const executeFinalCrop = (sourceCanvas: HTMLCanvasElement, currentSvgPoints: Point[]): HTMLCanvasElement => {
+  const w = sourceCanvas.width;
+  const h = sourceCanvas.height;
+
+  // Convert normalized SVG points (0 to 1) to absolute pixel coordinates
+  const pts = currentSvgPoints.map(p => ({
+     x: p.x <= 1 ? p.x * w : p.x, 
+     y: p.y <= 1 ? p.y * h : p.y
+  }));
+
+  const cv = (window as any).cv;
+  let src = cv.imread(sourceCanvas);
+  let dst = new cv.Mat();
+  
+  // Create coordinate matrices
+  let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+    pts[0].x, pts[0].y, // Top-Left
+    pts[1].x, pts[1].y, // Top-Right
+    pts[2].x, pts[2].y, // Bottom-Right
+    pts[3].x, pts[3].y  // Bottom-Left
+  ]);
+  
+  // Calculate destination dimensions
+  const destWidth = Math.max(
+    Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y),
+    Math.hypot(pts[2].x - pts[3].x, pts[2].y - pts[3].y)
+  );
+  const destHeight = Math.max(
+    Math.hypot(pts[3].x - pts[0].x, pts[3].y - pts[0].y),
+    Math.hypot(pts[2].x - pts[1].x, pts[2].y - pts[1].y)
+  );
+
+  let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+    0, 0, destWidth, 0, destWidth, destHeight, 0, destHeight
+  ]);
+
+  // Execute the perspective warp
+  let M = cv.getPerspectiveTransform(srcTri, dstTri);
+  cv.warpPerspective(src, dst, M, new cv.Size(destWidth, destHeight), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+
+  // Draw to a hidden temporary canvas
+  const hiddenCanvas = document.createElement('canvas');
+  cv.imshow(hiddenCanvas, dst);
+
+  // CRITICAL: Cleanup WebAssembly Memory
+  src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
+
+  return hiddenCanvas;
+};
+
 interface SmartScannerToolProps {
   onBackToDashboard: () => void;
   initialFile?: File | null;
@@ -40,7 +152,7 @@ interface Point {
   y: number; // Normalized coordinate (0.0 to 1.0)
 }
 
-type FilterType = 'original' | 'grayscale' | 'bw' | 'magic-color';
+type FilterType = 'original' | 'grayscale' | 'bw' | 'magic-color' | 'sharpen' | 'sepia';
 
 interface PageState {
   corners: Point[]; // Normalized coordinate handles
@@ -425,6 +537,23 @@ export default function SmartScannerTool({
           );
         } else if (targetFilter === 'magic-color') {
           filterSrc.convertTo(filterDst, -1, 1.35, 20);
+        } else if (targetFilter === 'sharpen') {
+          let kernel = cv.matFromArray(3, 3, cv.CV_32F, [
+             0, -1,  0,
+            -1,  5, -1,
+             0, -1,  0
+          ]);
+          cv.filter2D(filterSrc, filterDst, cv.CV_8U, kernel);
+          kernel.delete();
+        } else if (targetFilter === 'sepia') {
+          let kernel = cv.matFromArray(4, 4, cv.CV_32F, [
+            0.393, 0.769, 0.189, 0,
+            0.349, 0.686, 0.168, 0,
+            0.272, 0.534, 0.131, 0,
+            0,     0,     0,     1
+          ]);
+          cv.transform(filterSrc, filterDst, kernel);
+          kernel.delete();
         }
 
         const resCanvas = document.createElement('canvas');
@@ -517,7 +646,7 @@ export default function SmartScannerTool({
         setCroppedWidth(updatedCache.croppedWidth);
         setCroppedHeight(updatedCache.croppedHeight);
         setFilter(updatedCache.filter);
-        setShowPreview(true);
+        setShowPreview(false);
         if (updatedCache.cropVariations) {
           setCropVariations(updatedCache.cropVariations);
           setSelectedVariationIndex(updatedCache.selectedVariationIndex ?? 0);
@@ -625,7 +754,7 @@ export default function SmartScannerTool({
         setCroppedWidth(cached.croppedWidth);
         setCroppedHeight(cached.croppedHeight);
         setFilter(cached.filter);
-        setShowPreview(!!cached.croppedImage);
+        setShowPreview(false);
         if (cached.cropVariations) {
           setCropVariations(cached.cropVariations);
           setSelectedVariationIndex(cached.selectedVariationIndex ?? 0);
@@ -886,6 +1015,19 @@ export default function SmartScannerTool({
 
   // Force re-detection or layout fallback reset
   const handleRetakeReset = () => {
+    // Delete save settings for the current image
+    setCroppedImage(null);
+    setFilteredImage(null);
+    setFilter('original');
+    setShowPreview(false);
+    saveCurrentPageState(currentPage, {
+      isEdited: false,
+      croppedImage: null,
+      filteredImage: null,
+      filter: 'original',
+      croppedCanvasData: undefined
+    });
+
     if (checkOpenCVReady()) {
       handleAutoDetectClick();
     } else {
@@ -988,6 +1130,8 @@ export default function SmartScannerTool({
         handles: corners
       });
 
+      return outputDataUrl;
+
     } catch (err: any) {
       console.error(err);
       alert('Perspective distortion correction failed: ' + (err.message || err));
@@ -1051,6 +1195,23 @@ export default function SmartScannerTool({
         // Whitens backgrounds while saturating document elements to make printed texts signature layers pop
         // src.convertTo(dst, rtype, alpha, beta) (alpha: contrast multiplier, beta: brightness boost offset)
         src.convertTo(dst, -1, 1.35, 20);
+      } else if (selectedFilter === 'sharpen') {
+        let kernel = cv.matFromArray(3, 3, cv.CV_32F, [
+           0, -1,  0,
+          -1,  5, -1,
+           0, -1,  0
+        ]);
+        cv.filter2D(src, dst, cv.CV_8U, kernel);
+        kernel.delete();
+      } else if (selectedFilter === 'sepia') {
+        let kernel = cv.matFromArray(4, 4, cv.CV_32F, [
+          0.393, 0.769, 0.189, 0,
+          0.349, 0.686, 0.168, 0,
+          0.272, 0.534, 0.131, 0,
+          0,     0,     0,     1
+        ]);
+        cv.transform(src, dst, kernel);
+        kernel.delete();
       }
 
       const resCanvas = document.createElement('canvas');
@@ -1070,7 +1231,8 @@ export default function SmartScannerTool({
 
   // Sync Adaptive Filter Generation on Crop edits
   useEffect(() => {
-    if (!croppedImage) {
+    const targetBaseImage = showPreview ? croppedImage : sourceImage;
+    if (!targetBaseImage) {
       setFilteredImage(null);
       return;
     }
@@ -1078,25 +1240,29 @@ export default function SmartScannerTool({
     let active = true;
     const generate = async () => {
       try {
-        const filteredUrl = await processFilterData(croppedImage, filter);
+        const filteredUrl = await processFilterData(targetBaseImage, filter);
         if (active) {
           setFilteredImage(filteredUrl);
-          // Sync filtered data to cache state
-          saveCurrentPageState(currentPage, {
-            filteredImage: filteredUrl,
-            filter,
-            croppedCanvasData: filteredUrl
-          });
+          // Sync filtered data to cache state only if we're dealing with a cropped sheet
+          if (showPreview && croppedImage) {
+            saveCurrentPageState(currentPage, {
+              filteredImage: filteredUrl,
+              filter,
+              croppedCanvasData: filteredUrl
+            });
+          }
         }
       } catch (err) {
         console.error(err);
         if (active) {
-          setFilteredImage(croppedImage);
-          saveCurrentPageState(currentPage, {
-            filteredImage: croppedImage,
-            filter,
-            croppedCanvasData: croppedImage
-          });
+          setFilteredImage(targetBaseImage);
+          if (showPreview && croppedImage) {
+            saveCurrentPageState(currentPage, {
+              filteredImage: croppedImage,
+              filter,
+              croppedCanvasData: croppedImage
+            });
+          }
         }
       }
     };
@@ -1106,19 +1272,68 @@ export default function SmartScannerTool({
     return () => {
       active = false;
     };
-  }, [croppedImage, filter]);
+  }, [croppedImage, sourceImage, showPreview, filter, currentPage]);
+
+  const handleSaveCurrentPage = async () => {
+    if (!sourceImage || !corners || corners.length !== 4) {
+      console.warn("No active canvas or crop points to save.");
+      return { currentCropped: croppedImage, currentFiltered: filteredImage };
+    }
+
+    try {
+      const sourceCanvas = await new Promise<HTMLCanvasElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+           const canvas = document.createElement('canvas');
+           canvas.width = img.width;
+           canvas.height = img.height;
+           const ctx = canvas.getContext('2d');
+           if (ctx) ctx.drawImage(img, 0, 0);
+           resolve(canvas);
+        };
+        img.onerror = reject;
+        img.src = sourceImage;
+      });
+
+      // 1. Physically cut the image using the current SVG coordinates
+      const warpedCanvas = executeFinalCrop(sourceCanvas, corners);
+      
+      // 2. Compress the physically cut image into lightweight JPEG bytes
+      const savedBlob = await getOptimizedJpegBytes(warpedCanvas); 
+      const savedDataUrl = warpedCanvas.toDataURL('image/jpeg', 0.85);
+      
+      // 3. Save the correctly cropped bytes into the React state dictionary
+      setPagesData((prev) => ({
+        ...prev,
+        [currentPage]: {
+          ...prev[currentPage],
+          corners,
+          croppedImage: savedDataUrl,
+          filteredImage: savedDataUrl, // The preview filter might not be applied, but this fixes the "ghost crop" bug
+          croppedWidth: warpedCanvas.width,
+          croppedHeight: warpedCanvas.height,
+          filter,
+          cropVariations,
+          selectedVariationIndex,
+          isEdited: true,
+          croppedCanvasData: savedDataUrl
+        }
+      }));
+
+      console.log(`Page ${currentPage + 1} successfully cropped and saved.`);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 1500);
+
+      return { currentCropped: savedDataUrl, currentFiltered: savedDataUrl };
+    } catch (error) {
+      console.error("Failed to crop and save page:", error);
+      return { currentCropped: croppedImage, currentFiltered: filteredImage };
+    }
+  };
 
   // Navigation handlers with atomic automated caching
   const handleNextPage = async () => {
     if (currentPage < pageCount - 1 && fileUrl) {
-      saveCurrentPageState(currentPage, {
-        corners,
-        croppedImage,
-        filteredImage,
-        croppedWidth,
-        croppedHeight,
-        filter
-      });
       const nextPage = currentPage + 1;
       setCurrentPage(nextPage);
       await loadPdfPage(fileUrl, nextPage, true);
@@ -1127,14 +1342,6 @@ export default function SmartScannerTool({
 
   const handlePrevPage = async () => {
     if (currentPage > 0 && fileUrl) {
-      saveCurrentPageState(currentPage, {
-        corners,
-        croppedImage,
-        filteredImage,
-        croppedWidth,
-        croppedHeight,
-        filter
-      });
       const prevPage = currentPage - 1;
       setCurrentPage(prevPage);
       await loadPdfPage(fileUrl, prevPage, true);
@@ -1158,7 +1365,11 @@ export default function SmartScannerTool({
 
   // Exporters: Compile ALL annotated/scanned sheets into a master PDF document
   const handleDownloadPdf = async (compileAllPages: boolean = false) => {
-    const activeImage = filteredImage || croppedImage;
+    // 1. CRITICAL CATCH: Force-save the currently visible page before exporting
+    // This guarantees the last page is included even if the user didn't click "Save"
+    const { currentCropped, currentFiltered } = await handleSaveCurrentPage();
+
+    const activeImage = currentFiltered || currentCropped || filteredImage || croppedImage;
     if (!file) return;
 
     const isPdfFile = file.type === 'application/pdf' || file.name.endsWith('.pdf');
@@ -1170,50 +1381,73 @@ export default function SmartScannerTool({
       const pdfDoc = await PDFDocument.create();
 
       // Ensure the current page's latest state is saved locally in our snapshot
-      const currentPagesSnapshot = {
-        ...pagesData,
-        [currentPage]: {
-          corners,
-          croppedImage,
-          filteredImage,
-          croppedWidth,
-          croppedHeight,
-          filter,
-          cropVariations,
-          selectedVariationIndex,
-          isEdited: pagesData[currentPage]?.isEdited || (croppedImage !== null),
-          croppedCanvasData: filteredImage || croppedImage || undefined
-        }
-      };
-
-      if (compileAllPages && fileUrl && pageCount > 1) {
-        // Save current active screen prior to full bundle compiling
-        saveCurrentPageState(currentPage, {
-          corners,
-          croppedImage,
-          filteredImage,
-          croppedWidth,
-          croppedHeight,
-          filter,
-          isEdited: pagesData[currentPage]?.isEdited || (croppedImage !== null),
-          croppedCanvasData: filteredImage || croppedImage || undefined
+      // Merge with the newly guaranteed active image to prevent stale closure!
+      const finalExportData: Record<number, PageState> = { ...pagesData };
+      
+      // 2. Process the currently visible page instantly (Bypassing React setState)
+      let activeCanvasBlob: ArrayBuffer | null = null;
+      let activeDataUrl: string | undefined = undefined;
+      
+      if (sourceImage && corners && corners.length === 4) {
+        const sourceCanvas = await new Promise<HTMLCanvasElement>((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => {
+             const canvas = document.createElement('canvas');
+             canvas.width = img.width;
+             canvas.height = img.height;
+             const ctx = canvas.getContext('2d');
+             if (ctx) ctx.drawImage(img, 0, 0);
+             resolve(canvas);
+          };
+          img.onerror = reject;
+          img.src = sourceImage;
         });
 
+        const croppedCanvas = executeFinalCrop(sourceCanvas, corners);
+        
+        activeCanvasBlob = await getOptimizedJpegBytes(croppedCanvas);
+        activeDataUrl = croppedCanvas.toDataURL('image/jpeg', 0.85);
+      }
+
+      finalExportData[currentPage] = {
+        ...pagesData[currentPage],
+        corners,
+        croppedImage: activeDataUrl || currentCropped || croppedImage,
+        filteredImage: activeDataUrl || currentFiltered || filteredImage,
+        croppedWidth,
+        croppedHeight,
+        filter,
+        cropVariations,
+        selectedVariationIndex,
+        isEdited: true,
+        croppedCanvasData: activeDataUrl || currentFiltered || currentCropped || filteredImage || croppedImage || undefined
+      };
+      
+      // Update the React state in the background for consistency
+      setPagesData(finalExportData);
+
+      if (compileAllPages && fileUrl && pageCount > 1) {
         if (isPdfFile) {
           const originalPdfBytes = await file.arrayBuffer();
           const originalPdfDoc = await PDFDocument.load(originalPdfBytes);
 
           for (let i = 0; i < pageCount; i++) {
             setProgressText(`Compiling page ${i + 1} of ${pageCount}...`);
-            const item = currentPagesSnapshot[i];
+            const item = finalExportData[i];
 
-            if (item && item.isEdited && item.croppedCanvasData) {
-              const response = await fetch(item.croppedCanvasData);
-              const arrayBuffer = await response.arrayBuffer();
-              const embeddedPng = await pdfDoc.embedPng(arrayBuffer);
-              const { width, height } = embeddedPng.scale(1.0);
+            if (item && item.isEdited) {
+              let arrayBuffer: ArrayBuffer;
+              if (i === currentPage && activeCanvasBlob) {
+                 arrayBuffer = activeCanvasBlob;
+              } else if (item.croppedCanvasData) {
+                 arrayBuffer = await getOptimizedUrlBytes(item.croppedCanvasData);
+              } else {
+                 arrayBuffer = await getOptimizedUrlBytes(item.croppedImage || item.filteredImage || '');
+              }
+              const embeddedJpg = await pdfDoc.embedJpg(arrayBuffer);
+              const { width, height } = embeddedJpg.scale(1.0);
               const pdfPage = pdfDoc.addPage([width, height]);
-              pdfPage.drawImage(embeddedPng, {
+              pdfPage.drawImage(embeddedJpg, {
                 x: 0,
                 y: 0,
                 width,
@@ -1229,16 +1463,21 @@ export default function SmartScannerTool({
           // Fallback if uploading a direct set of images
           for (let i = 0; i < pageCount; i++) {
             setProgressText(`Embedding image page ${i + 1} of ${pageCount}...`);
-            const item = currentPagesSnapshot[i];
-            const pageDataUrl = item?.croppedCanvasData || item?.filteredImage || item?.croppedImage;
+            const item = finalExportData[i];
 
-            if (pageDataUrl) {
-              const response = await fetch(pageDataUrl);
-              const arrayBuffer = await response.arrayBuffer();
-              const embeddedPng = await pdfDoc.embedPng(arrayBuffer);
-              const { width, height } = embeddedPng.scale(1.0);
+            if (item && item.isEdited) {
+              let arrayBuffer: ArrayBuffer;
+              if (i === currentPage && activeCanvasBlob) {
+                 arrayBuffer = activeCanvasBlob;
+              } else if (item.croppedCanvasData) {
+                 arrayBuffer = await getOptimizedUrlBytes(item.croppedCanvasData);
+              } else {
+                 arrayBuffer = await getOptimizedUrlBytes(item.croppedImage || item.filteredImage || '');
+              }
+              const embeddedJpg = await pdfDoc.embedJpg(arrayBuffer);
+              const { width, height } = embeddedJpg.scale(1.0);
               const pdfPage = pdfDoc.addPage([width, height]);
-              pdfPage.drawImage(embeddedPng, {
+              pdfPage.drawImage(embeddedJpg, {
                 x: 0,
                 y: 0,
                 width,
@@ -1250,14 +1489,20 @@ export default function SmartScannerTool({
       } else {
         // Single page target compiling
         if (isPdfFile) {
-          const item = currentPagesSnapshot[currentPage];
-          if (item && item.isEdited && item.croppedCanvasData) {
-            const response = await fetch(item.croppedCanvasData);
-            const arrayBuffer = await response.arrayBuffer();
-            const embeddedPng = await pdfDoc.embedPng(arrayBuffer);
-            const { width, height } = embeddedPng.scale(1.0);
+          const item = finalExportData[currentPage];
+          if (item && item.isEdited) {
+            let arrayBuffer: ArrayBuffer;
+            if (activeCanvasBlob) {
+               arrayBuffer = activeCanvasBlob;
+            } else if (item.croppedCanvasData) {
+               arrayBuffer = await getOptimizedUrlBytes(item.croppedCanvasData);
+            } else {
+               arrayBuffer = await getOptimizedUrlBytes(item.croppedImage || item.filteredImage || '');
+            }
+            const embeddedJpg = await pdfDoc.embedJpg(arrayBuffer);
+            const { width, height } = embeddedJpg.scale(1.0);
             const pdfPage = pdfDoc.addPage([width, height]);
-            pdfPage.drawImage(embeddedPng, {
+            pdfPage.drawImage(embeddedJpg, {
               x: 0,
               y: 0,
               width,
@@ -1271,16 +1516,19 @@ export default function SmartScannerTool({
             pdfDoc.addPage(copiedPage);
           }
         } else {
-          if (!activeImage) {
+          let arrayBuffer: ArrayBuffer;
+          if (activeCanvasBlob) {
+             arrayBuffer = activeCanvasBlob;
+          } else if (activeImage) {
+             arrayBuffer = await getOptimizedUrlBytes(activeImage);
+          } else {
             alert('Please flatten and crop the current document boundary first.');
             return;
           }
-          const response = await fetch(activeImage);
-          const arrayBuffer = await response.arrayBuffer();
-          const embeddedPng = await pdfDoc.embedPng(arrayBuffer);
-          const { width, height } = embeddedPng.scale(1.0);
+          const embeddedJpg = await pdfDoc.embedJpg(arrayBuffer);
+          const { width, height } = embeddedJpg.scale(1.0);
           const page = pdfDoc.addPage([width, height]);
-          page.drawImage(embeddedPng, {
+          page.drawImage(embeddedJpg, {
             x: 0,
             y: 0,
             width,
@@ -1412,16 +1660,9 @@ export default function SmartScannerTool({
       {/* Main interface workspace */}
       {!file ? (
         <div className="max-w-xl mx-auto py-8">
-          <FileUploadArea
-            onFileSelected={handleFileSelected}
-            accept={{
-              'application/pdf': ['.pdf'],
-              'image/png': ['.png'],
-              'image/jpeg': ['.jpg', '.jpeg'],
-              'image/webp': ['.webp']
-            }}
-            title="Drag & drop your document shots here"
-            subtitle="JPG, PNG, WEBP images or multipage PDF documents"
+          <FileUploader 
+            onFileSelected={(files) => handleFileSelected(files[0])} 
+            acceptType="all"
           />
           
           <div className="mt-8 rounded-xl bg-slate-50 dark:bg-slate-900/45 p-5 border border-slate-200 dark:border-slate-800 space-y-3.5 block select-none">
@@ -1519,7 +1760,7 @@ export default function SmartScannerTool({
                 >
                   <img
                     ref={imageRef}
-                    src={sourceImage}
+                    src={filteredImage || sourceImage}
                     onLoad={updateDisplaySize}
                     className="block max-h-[50vh] max-w-full h-auto w-auto pointer-events-none select-none rounded shadow-2xl border border-slate-805"
                     alt="Source document preview"
@@ -1598,7 +1839,9 @@ export default function SmartScannerTool({
                 {[
                   { id: 'original', label: 'Original' },
                   { id: 'magic-color', label: 'Vibrant' },
-                  { id: 'bw', label: 'Magic B&W' }
+                  { id: 'bw', label: 'Magic B&W' },
+                  { id: 'sharpen', label: 'Sharpen' },
+                  { id: 'sepia', label: 'Sepia' }
                 ].map((opt) => (
                   <button
                     key={opt.id}
@@ -1687,20 +1930,35 @@ export default function SmartScannerTool({
                 <span className="text-[10px] mt-1 font-bold">Retake / Reset</span>
               </button>
 
-              <button
-                onClick={() => handleApplyCrop(false)}
-                disabled={processing}
-                className={`flex flex-col items-center justify-center py-2.5 rounded-xl border transition-all cursor-pointer group col-span-1 ${
-                  justSaved
-                    ? 'border-emerald-500 bg-emerald-950/45 text-emerald-400 animate-pulse'
-                    : 'border-slate-800 bg-slate-900/50 hover:bg-slate-900 text-slate-300 hover:text-emerald-400'
-                }`}
-                title="Save crop settings for this page"
-                id="action-save-crop-page"
-              >
-                <Check className={`w-4.5 h-4.5 transition-colors ${justSaved ? 'text-emerald-400 font-bold' : 'text-slate-450 group-hover:text-emerald-500'}`} />
-                <span className="text-[10px] mt-1 font-bold">{justSaved ? 'Saved!' : 'Save'}</span>
-              </button>
+              {pagesData[currentPage]?.isEdited && currentPage < pageCount - 1 ? (
+                <button
+                  onClick={handleNextPage}
+                  disabled={processing}
+                  className="flex flex-col items-center justify-center py-2.5 rounded-xl border border-cyan-500/50 bg-cyan-950/30 hover:bg-cyan-900/50 text-cyan-400 group col-span-1 transition-all cursor-pointer"
+                  title="Go to next page"
+                  id="action-next-page"
+                >
+                  <ArrowRight className="w-4.5 h-4.5 transition-transform group-hover:translate-x-1" />
+                  <span className="text-[10px] mt-1 font-bold">Next Page</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleSaveCurrentPage}
+                  disabled={pagesData[currentPage]?.isEdited || processing}
+                  className={`flex flex-col items-center justify-center py-2.5 rounded-xl border transition-all cursor-pointer group col-span-1 ${
+                    pagesData[currentPage]?.isEdited
+                      ? 'border-emerald-500/50 bg-emerald-950/30 text-emerald-400 cursor-default opacity-80'
+                      : justSaved
+                      ? 'border-emerald-500 bg-emerald-950/45 text-emerald-400 animate-pulse'
+                      : 'border-slate-800 bg-slate-900/50 hover:bg-slate-900 text-slate-300 hover:text-emerald-400'
+                  }`}
+                  title={pagesData[currentPage]?.isEdited ? "Already saved" : "Save crop settings for this page"}
+                  id="action-save-crop-page"
+                >
+                  <Check className={`w-4.5 h-4.5 transition-colors ${pagesData[currentPage]?.isEdited || justSaved ? 'text-emerald-400 font-bold' : 'text-slate-450 group-hover:text-emerald-500'}`} />
+                  <span className="text-[10px] mt-1 font-bold">{pagesData[currentPage]?.isEdited || justSaved ? 'Saved!' : 'Save'}</span>
+                </button>
+              )}
 
               <button
                 onClick={() => handleDownloadPdf(true)}
@@ -1796,7 +2054,9 @@ export default function SmartScannerTool({
                     { id: 'original', label: 'Original' },
                     { id: 'grayscale', label: 'Grayscale' },
                     { id: 'bw', label: 'Magic B&W' },
-                    { id: 'magic-color', label: 'Vibrant' }
+                    { id: 'magic-color', label: 'Vibrant' },
+                    { id: 'sharpen', label: 'Sharpen' },
+                    { id: 'sepia', label: 'Sepia' }
                   ].map((opt) => (
                     <button
                       key={opt.id}

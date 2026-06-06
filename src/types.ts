@@ -12,7 +12,12 @@ export type ToolId =
   | 'ocr-pdf'
   | 'lock-pdf'
   | 'unlock-pdf'
-  | 'scanner';
+  | 'scanner'
+  | 'redact-pdf'
+  | 'purify-metadata'
+  | 'compare-pdf'
+  | 'form-generator'
+  | 'audiobook-studio';
 
 export interface Tool {
   id: ToolId;

@@ -23,7 +23,12 @@ import {
   Hash,
   FileSearch,
   LockKeyhole,
-  Maximize
+  Maximize,
+  ShieldBan,
+  PaintBucket,
+  GitPullRequest,
+  FormInput,
+  Headphones
 } from 'lucide-react';
 
 interface ShellProps {
@@ -45,7 +50,12 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   FileSearch: FileSearch,
   LockKeyhole: LockKeyhole,
   Unlock: Unlock,
-  Maximize: Maximize
+  Maximize: Maximize,
+  ShieldBan: ShieldBan,
+  PaintBucket: PaintBucket,
+  GitPullRequest: GitPullRequest,
+  FormInput: FormInput,
+  Headphones: Headphones
 };
 
 interface SidebarContentProps {

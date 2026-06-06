@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument } from '@cantoo/pdf-lib';
-import FileUploadArea from './FileUploadArea';
+import { FileUploader } from './FileUploader';
 import ProcessingOverlay from './ProcessingOverlay';
 import { 
   ChevronLeft, 
@@ -209,10 +209,9 @@ export default function UnlockPDFTool({
 
       {!file ? (
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-850 shadow-xs">
-          <FileUploadArea 
-            onFileSelected={analyzeFileSelected} 
-            title="Upload Locked PDF to decrypt"
-            subtitle="Secure automated local challenge runs without cloud interactions."
+          <FileUploader 
+            onFileSelected={(files) => analyzeFileSelected(files[0])} 
+            acceptType="pdf"
           />
         </div>
       ) : (

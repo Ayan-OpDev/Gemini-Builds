@@ -8,6 +8,8 @@ export default defineConfig(() => {
     plugins: [react(), tailwindcss()],
     build: {
       target: 'esnext',
+      outDir: 'dist',
+      emptyOutDir: true
     },
     resolve: {
       alias: {

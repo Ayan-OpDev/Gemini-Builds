@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
-import FileUploadArea from './FileUploadArea';
+import { FileUploader } from './FileUploader';
 import ProcessingOverlay from './ProcessingOverlay';
 import {
   ChevronLeft,
@@ -467,11 +467,10 @@ export default function SignPDFTool({
               </p>
             </div>
           ) : (
-            <FileUploadArea
-              onFileSelected={handleFileSelected}
-              title="Upload PDF to start signing"
-              subtitle="All drawing operations and coordinate maps execute inside your browser."
-            />
+            <FileUploader 
+            onFileSelected={(files) => handleFileSelected(files[0])} 
+            acceptType="pdf"
+          />
           )}
         </div>
       ) : (

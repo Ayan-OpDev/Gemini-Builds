@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
-import FileUploadArea from './FileUploadArea';
+import { FileUploader } from './FileUploader';
 import {
   ChevronLeft,
   BookOpen,
@@ -376,11 +376,10 @@ export default function BookReaderTool({
               </p>
             </div>
           ) : (
-            <FileUploadArea
-              onFileSelected={handleFileSelected}
-              title="Upload PDF to start Reading"
-              subtitle="Perfect for ebooks, manuals, textbooks, papers with smooth spreads."
-            />
+            <FileUploader 
+            onFileSelected={(files) => handleFileSelected(files[0])} 
+            acceptType="pdf"
+          />
           )}
         </div>
       ) : (

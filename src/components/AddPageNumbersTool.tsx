@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
-import FileUploadArea from './FileUploadArea';
+import { FileUploader } from './FileUploader';
 import ProcessingOverlay from './ProcessingOverlay';
 import { 
   ChevronLeft, 
@@ -229,10 +229,9 @@ export default function AddPageNumbersTool({
 
       {!file ? (
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-850 shadow-xs">
-          <FileUploadArea 
-            onFileSelected={handleFileSelected} 
-            title="Import PDF to Paginate"
-            subtitle="Secure client-side canvas numbering starts instantly."
+          <FileUploader 
+            onFileSelected={(files) => handleFileSelected(files[0])} 
+            acceptType="pdf"
           />
         </div>
       ) : (

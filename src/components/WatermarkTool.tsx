@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
-import FileUploadArea from './FileUploadArea';
+import { FileUploader } from './FileUploader';
 import ProcessingOverlay from './ProcessingOverlay';
 import {
   ChevronLeft,
@@ -275,11 +275,10 @@ export default function WatermarkTool({
               </p>
             </div>
           ) : (
-            <FileUploadArea
-              onFileSelected={handleFileSelected}
-              title="Drag & drop PDF to Watermark"
-              subtitle="All pages will be rendered and transparently watermarked in memory."
-            />
+            <FileUploader 
+            onFileSelected={(files) => handleFileSelected(files[0])} 
+            acceptType="pdf"
+          />
           )}
         </div>
       ) : (

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import JSZip from 'jszip';
-import FileUploadArea from './FileUploadArea';
+import { FileUploader } from './FileUploader';
 import ProcessingOverlay from './ProcessingOverlay';
 import {
   ChevronLeft,
@@ -213,11 +213,10 @@ export default function PDFToImageTool({
                   {errorMsg}
                 </div>
               )}
-              <FileUploadArea
-                onFileSelected={handleFileSelected}
-                title="Drag & drop your PDF file here"
-                subtitle="we will extract all pages as separate high-resolution images"
-              />
+              <FileUploader 
+            onFileSelected={(files) => handleFileSelected(files[0])} 
+            acceptType="pdf"
+          />
             </div>
           )}
         </div>
