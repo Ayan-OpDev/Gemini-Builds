@@ -15,7 +15,9 @@ import {
   RotateCw,
   Award,
   BookOpen,
-  Trash2
+  Trash2,
+  Combine,
+  ExternalLink
 } from 'lucide-react';
 import { extractTextFromPDF, calculateAICost } from '../../utils/pdfExtractor';
 import PDFCanvasViewer from '../../components/PDFCanvasViewer';
@@ -42,7 +44,7 @@ export default function FlashcardTool() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
 
   // Split panel drag-resizing state
-  const [leftWidth, setLeftWidth] = useState<number>(50); // 50/50 starting split percentage
+  const [leftWidth, setLeftWidth] = useState<number>(45); // 45/55 starting split percentage
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [windowWidth, setWindowWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1024);
@@ -76,7 +78,7 @@ export default function FlashcardTool() {
       const relativeX = e.clientX - rect.left;
       const percentage = (relativeX / rect.width) * 100;
       
-      const clamped = Math.max(40, Math.min(70, percentage));
+      const clamped = Math.max(30, Math.min(70, percentage));
       setLeftWidth(clamped);
     };
 
@@ -143,7 +145,6 @@ export default function FlashcardTool() {
       const extractedText = await extractTextFromPDF(flashcardsFile);
       const { wordCount, cost } = calculateAICost(extractedText);
       
-      // Store details to show custom confirmation dialog
       setPendingCostDetails({ wordCount, cost: Math.max(2, Math.min(10, cost)), extractedText });
       setIsGenerating(false);
     } catch (e: any) {
@@ -255,8 +256,12 @@ export default function FlashcardTool() {
   return (
     <div 
       ref={containerRef}
-      className="flex flex-col md:flex-row h-[calc(100vh-64px)] w-full antialiased overflow-hidden bg-slate-50 dark:bg-slate-900 relative"
+      className="flex flex-col md:flex-row h-[calc(100vh-64px)] w-full antialiased overflow-hidden bg-gradient-to-br from-[#f8fafc] to-[#f1f5f9] dark:from-[#030712] dark:to-[#0f172a] relative"
     >
+      {/* Decorative Blur Backgrounds */}
+      <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none -z-10 mix-blend-screen"></div>
+      <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-emerald-500/10 rounded-full blur-[100px] pointer-events-none -z-10 mix-blend-screen"></div>
+
       {/* LEFT PANEL: PDF Viewer */}
       <div 
         style={{ 
@@ -264,57 +269,56 @@ export default function FlashcardTool() {
           height: isMobile ? 'auto' : '100%',
           pointerEvents: isResizing ? 'none' : 'auto'
         }}
-        className="border-b md:border-b-0 border-r-0 md:border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 overflow-hidden relative flex flex-col shrink-0"
+        className="border-b md:border-b-0 md:border-r border-slate-200/50 dark:border-slate-800/50 bg-white/40 dark:bg-[#030712]/40 backdrop-blur-xl overflow-hidden relative flex flex-col shrink-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)]"
       >
         {isMobile ? (
           /* Mobile view: No PDFCanvasViewer at all, only functional PDF management */
-          <div className="w-full flex flex-col">
+          <div className="w-full flex flex-col p-4">
             {!flashcardsFile ? (
-              <div className="flex flex-col items-center justify-center p-4 text-center w-full bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex flex-row items-center gap-3 w-full max-w-md justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 rounded-2xl shadow-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-950 rounded-xl flex items-center justify-center">
-                      <FileText className="w-5 h-5 text-indigo-500" />
-                    </div>
-                    <div className="text-left">
-                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100">Upload PDF</h4>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Select a file to begin</p>
-                    </div>
+              <div className="flex flex-row items-center gap-4 w-full justify-between bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-white/20 dark:border-slate-800/50 p-4 rounded-2xl shadow-xl shadow-indigo-500/5">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/50 rounded-xl flex items-center justify-center border border-indigo-100 dark:border-indigo-800/50 shadow-inner">
+                    <FileText className="w-5 h-5 text-indigo-500" />
                   </div>
-                  <label 
-                    htmlFor="file-upload-mobile"
-                    className="cursor-pointer px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md shadow-indigo-600/15 transition-all active:scale-95 whitespace-nowrap"
-                  >
-                    Select File
-                  </label>
-                  <input 
-                    type="file" 
-                    id="file-upload-mobile" 
-                    className="hidden" 
-                    accept="application/pdf" 
-                    onChange={handleFileSelect} 
-                  />
+                  <div className="text-left">
+                    <h4 className="text-sm font-extrabold text-slate-800 dark:text-slate-100">Upload PDF</h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Select a file to begin</p>
+                  </div>
                 </div>
+                <label 
+                  htmlFor="file-upload-mobile"
+                  className="cursor-pointer px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-[0_4px_14px_rgba(79,70,229,0.3)] transition-all active:scale-95 whitespace-nowrap"
+                >
+                  Select File
+                </label>
+                <input 
+                  type="file" 
+                  id="file-upload-mobile" 
+                  className="hidden" 
+                  accept="application/pdf" 
+                  onChange={handleFileSelect} 
+                />
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center p-4 text-center w-full bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex flex-row items-center gap-3 w-full max-w-md justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 rounded-2xl shadow-sm">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl flex items-center justify-center shrink-0">
-                      <FileText className="w-5 h-5 text-emerald-600 dark:text-emerald-400 animate-pulse" />
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-row items-center gap-4 w-full justify-between bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-white/20 dark:border-slate-800/50 p-4 rounded-2xl shadow-xl shadow-emerald-500/5">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center border border-emerald-100 dark:border-emerald-800/50 shrink-0">
+                      <FileText className="w-5 h-5 text-emerald-500 animate-pulse" />
                     </div>
-                    <div className="text-left min-w-0">
-                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate max-w-[140px] sm:max-w-[200px]" title={flashcardsFile.name}>
+                    <div className="text-left min-w-0 pr-2">
+                      <h4 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 truncate w-full" title={flashcardsFile.name}>
                         {flashcardsFile.name}
                       </h4>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Active Document</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Active Document</p>
                     </div>
                   </div>
                   <button 
                     onClick={() => setShowDeleteConfirm(true)}
-                    className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/35 text-rose-600 dark:text-rose-400 rounded-xl font-bold text-xs transition-all active:scale-95 border border-rose-100 dark:border-rose-900/40 shrink-0 whitespace-nowrap"
+                    className="p-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-xl font-bold text-xs transition-all active:scale-95 border border-rose-100 dark:border-rose-500/20 shrink-0 shadow-sm"
+                    title="Remove Document"
                   >
-                    Delete Current PDF
+                    <Trash2 className="w-5 h-5" />
                   </button>
                 </div>
               </div>
@@ -322,25 +326,27 @@ export default function FlashcardTool() {
           </div>
         ) : (
           /* Desktop view: Standard layout showing PDF renderer or large drag-and-drop area */
-          <>
+          <div className="flex-1 flex flex-col h-full relative">
             {!flashcardsFile ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-6 md:p-12 text-center h-full w-full bg-slate-50 dark:bg-slate-950">
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-8 md:p-12 z-10">
                 <div 
-                  className={`border-2 border-dashed rounded-3xl p-8 md:p-12 max-w-lg w-full flex flex-col items-center justify-center transition-all ${
+                  className={`relative w-full max-w-xl mx-auto rounded-[2.5rem] p-10 md:p-16 flex flex-col items-center justify-center text-center transition-all duration-500 border-2 border-dashed ${
                     isDragging 
-                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' 
-                      : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 hover:bg-slate-100 dark:hover:bg-slate-900'
+                      ? 'border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10 scale-[1.02]' 
+                      : 'border-slate-300 dark:border-slate-700 hover:border-indigo-400/50 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md'
                   }`}
                   onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                   onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
                   onDrop={handleFileDrop}
                 >
-                  <div className="w-16 h-16 md:w-20 md:h-20 bg-white dark:bg-slate-800 shadow-sm rounded-2xl flex items-center justify-center mb-6">
-                    <FileText className="w-8 h-8 md:w-10 md:h-10 text-indigo-500" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-white/5 dark:to-transparent rounded-[2.5rem] pointer-events-none"></div>
+
+                  <div className="w-24 h-24 mb-8 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-[0_8px_30px_rgba(79,70,229,0.3)] relative z-10">
+                    <FileText className="w-12 h-12 text-white" />
                   </div>
-                  <h2 className="text-xl md:text-2xl font-bold text-slate-800 dark:text-slate-100 mb-3">Upload a Document</h2>
-                  <p className="text-slate-500 dark:text-slate-400 max-w-xs mb-8 leading-relaxed text-sm md:text-base">
-                    Drag and drop your PDF study guide or notes, and let AI generate study flashcards.
+                  <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-4 tracking-tight relative z-10">Upload Syllabus or Text</h2>
+                  <p className="text-slate-500 dark:text-slate-400 max-w-sm mb-10 text-base leading-relaxed relative z-10">
+                    Drop your document here, and our generative AI will instantly build a comprehensive study deck.
                   </p>
                   
                   <input 
@@ -352,30 +358,30 @@ export default function FlashcardTool() {
                   />
                   <label 
                     htmlFor="file-upload"
-                    className="cursor-pointer px-6 md:px-8 py-3 md:py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md shadow-indigo-600/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-2"
+                    className="cursor-pointer px-8 py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-2xl font-extrabold text-base shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-2 relative z-10"
                   >
-                    Select File
+                    Select Local File
                   </label>
                 </div>
               </div>
             ) : flashcardsFile && pdfUrl ? (
               <PDFCanvasViewer url={pdfUrl} />
             ) : null}
-          </>
+          </div>
         )}
       </div>
 
-      {/* Resizer strip */}
+      {/* Elegant Resizer Strip */}
       <div
         onMouseDown={(e) => {
           e.preventDefault();
           setIsResizing(true);
         }}
-        className={`hidden md:block w-1 bg-slate-200 dark:bg-slate-800 hover:bg-indigo-500 dark:hover:bg-indigo-400 cursor-col-resize h-full transition-colors relative z-20 shrink-0 ${
-          isResizing ? '!bg-indigo-600 w-1.5' : ''
+        className={`hidden md:flex flex-col items-center justify-center w-1.5 hover:w-2 bg-slate-200/50 dark:bg-slate-800/50 hover:bg-indigo-500 dark:hover:bg-indigo-500 cursor-col-resize h-full transition-all duration-300 relative z-20 shrink-0 ${
+          isResizing ? '!bg-indigo-600 !w-2 shadow-[0_0_15px_rgba(79,70,229,0.5)]' : ''
         }`}
       >
-        <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 flex flex-col justify-center gap-1.5 pointer-events-none opacity-40">
+        <div className="flex flex-col justify-center gap-1.5 pointer-events-none">
           <div className="w-1 h-1 bg-slate-400 dark:bg-slate-500 rounded-full" />
           <div className="w-1 h-1 bg-slate-400 dark:bg-slate-500 rounded-full" />
           <div className="w-1 h-1 bg-slate-400 dark:bg-slate-500 rounded-full" />
@@ -386,211 +392,242 @@ export default function FlashcardTool() {
         <div className="fixed inset-0 z-40 cursor-col-resize" style={{ pointerEvents: 'auto' }} />
       )}
 
-      {/* RIGHT PANEL: Study Companion */}
+      {/* RIGHT PANEL: AI Study Companion Workspace */}
       <div 
         style={{ 
           width: isMobile ? '100%' : `${100 - leftWidth}%`,
           height: isMobile ? 'auto' : '100%'
         }}
-        className={`bg-white dark:bg-slate-950 flex flex-col overflow-hidden relative shrink-0 ${
+        className={`flex flex-col overflow-hidden relative shrink-0 ${
           isMobile ? 'flex-1' : ''
         }`}
       >
         {/* Header bar */}
-        <div className="h-14 border-b border-slate-200 dark:border-slate-800 flex flex-row items-center justify-between px-6 bg-slate-50 dark:bg-slate-900/50 shrink-0">
-          <div className="flex flex-row items-center gap-2">
-            <Sparkles className="w-5 h-5 text-indigo-500" />
-            <h3 className="font-semibold text-slate-800 dark:text-slate-200 tracking-tight">AI Flashcard Studio</h3>
+        <div className="h-16 px-6 lg:px-8 border-b border-white/20 dark:border-slate-800/50 flex items-center justify-between bg-white/40 dark:bg-slate-900/40 backdrop-blur-md shrink-0 shadow-sm relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
+              <Sparkles className="w-4 h-4 text-indigo-500" />
+            </div>
+            <h3 className="font-extrabold text-slate-900 dark:text-white tracking-tight text-lg">Knowledge Engine</h3>
           </div>
           {flashcardsFile && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                title="Delete study cards and document"
-                className="p-1 px-1.5 hover:bg-rose-50 dark:hover:bg-red-950/30 text-rose-600 dark:text-rose-400 rounded-lg transition-all cursor-pointer flex items-center justify-center border border-transparent hover:border-red-150 dark:hover:border-red-900/25 hover:scale-105 active:scale-95"
-              >
-                <Trash2 className="w-4 h-4 text-red-500 animate-pulse" />
-              </button>
-              <div className="text-xs font-semibold text-slate-500 bg-slate-200 dark:bg-slate-800 px-3 py-1 rounded-full truncate max-w-[200px]" title={flashcardsFile.name}>
+            <div className="flex items-center gap-3">
+              <div className="text-xs font-bold text-slate-500 dark:text-slate-400 bg-white/60 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50 px-4 py-1.5 rounded-full truncate max-w-[200px] shadow-sm backdrop-blur-sm" title={flashcardsFile.name}>
                 {flashcardsFile.name}
               </div>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                title="Discard study session"
+                className="p-1.5 hover:bg-rose-500/10 text-rose-500 rounded-xl transition-all cursor-pointer border border-transparent hover:border-rose-500/20 shadow-sm"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
           )}
         </div>
 
         {/* Action/Progress panel */}
         {flashcards.length > 0 && (
-          <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 backdrop-blur-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
-            <div className="flex-1 w-full">
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-650 dark:text-slate-405 mb-1.5">
-                <span>Overall Study Progress</span>
-                <span>{progressPercent}% Complete</span>
+          <div className="px-6 lg:px-8 py-5 border-b border-white/20 dark:border-slate-800/50 bg-white/20 dark:bg-[#030712]/30 backdrop-blur-xl flex flex-col sm:flex-row items-center justify-between gap-6 shrink-0 relative z-10">
+            <div className="flex-1 w-full max-w-md">
+              <div className="flex items-center justify-between text-xs font-extrabold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wider">
+                <span>Mastery Progress</span>
+                <span className="text-emerald-600 dark:text-emerald-400">{progressPercent}%</span>
               </div>
-              <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div className="w-full h-2.5 bg-slate-200/50 dark:bg-slate-800/50 rounded-full overflow-hidden shadow-inner backdrop-blur-sm">
                 <div 
-                  className="h-full bg-emerald-500 transition-all duration-300 rounded-full" 
+                  className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-700 ease-out rounded-full relative" 
                   style={{ width: `${progressPercent}%` }}
-                />
+                >
+                  <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                </div>
               </div>
-              <div className="flex items-center gap-4 text-[10px] text-slate-400 mt-1 font-mono">
+              <div className="flex items-center justify-between text-[10px] text-slate-500 mt-2 font-mono font-medium">
                 <span>Total: {flashcards.length} cards</span>
-                <span>•</span>
-                <span className="text-emerald-500 font-bold">Mastered: {masteredCount}</span>
-                <span>•</span>
-                <span className="text-amber-500 font-bold">Review: {reviewCount}</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">Mastered: {masteredCount}</span>
+                <span className="text-amber-500 dark:text-amber-400 font-bold">Review: {reviewCount}</span>
               </div>
             </div>
             {flashcardsFile && (
               <button 
                 onClick={handlePrepareGeneration}
                 disabled={isGenerating || isAdPlaying}
-                className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-705 text-slate-700 dark:text-slate-200 rounded-xl font-bold transition-all text-xs cursor-pointer select-none shrink-0"
+                className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 hover:shadow-md text-slate-800 dark:text-slate-200 rounded-xl font-bold transition-all text-xs cursor-pointer active:scale-95 shrink-0"
               >
-                <RotateCw className="w-3.5 h-3.5" />
-                Regenerate AI Cards
+                <RotateCw className="w-4 h-4 text-indigo-500" />
+                Resynthesize
               </button>
             )}
           </div>
         )}
 
         {/* Body content workspace */}
-        <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar bg-white dark:bg-slate-950 flex flex-col justify-between">
-          <div className="w-full">
+        <div className="flex-1 overflow-y-auto px-4 py-8 md:px-8 lg:px-12 custom-scrollbar flex flex-col relative z-0">
+          <div className="w-full flex-1 flex flex-col">
             {error && (
-              <div className="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-900/20 flex flex-col items-start gap-3 border border-red-200 dark:border-red-800/50">
+              <div className="mb-8 p-6 rounded-2xl bg-red-50/80 dark:bg-red-950/40 backdrop-blur-md flex flex-col items-start gap-4 border border-red-200/50 dark:border-red-900/50 shadow-lg shadow-red-500/5">
                 <div className="flex items-start gap-3 text-red-600 dark:text-red-400">
-                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                  <p className="text-sm font-medium">{error}</p>
+                  <AlertCircle className="w-6 h-6 shrink-0" />
+                  <p className="text-sm font-bold leading-relaxed">{error}</p>
                 </div>
                 {error.includes("Insufficient credits") && (
                   <button 
                     onClick={handleWatchAd}
                     disabled={isAdPlaying}
-                    className="mt-2 text-xs flex items-center gap-2 bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-900/50 dark:hover:bg-indigo-800/50 text-indigo-707 dark:text-indigo-300 px-3 py-1.5 rounded-lg font-bold transition-colors disabled:opacity-50"
+                    className="mt-2 w-full sm:w-auto text-sm flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white shadow-md shadow-indigo-500/25 px-5 py-2.5 rounded-xl font-bold transition-all disabled:opacity-70 disabled:cursor-not-allowed"
                   >
-                    {isAdPlaying ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
-                    {isAdPlaying ? "Watching Ad..." : "Watch Ad to earn +5 Credits"}
+                    {isAdPlaying ? <Loader2 className="w-5 h-5 animate-spin" /> : <PlayCircle className="w-5 h-5" />}
+                    {isAdPlaying ? "Ad Playing..." : "Watch Sponsor Ad (+5 Credits)"}
                   </button>
                 )}
               </div>
             )}
 
             {isAdPlaying && !error && (
-              <div className="flex flex-col items-center justify-center p-12 text-center h-full">
-                 <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-4" />
-                 <p className="text-slate-500 dark:text-slate-400 font-medium pb-2">Playing video ad...</p>
-                 <p className="text-xs text-slate-400 dark:text-slate-505">Your free credits will load in a brief moment.</p>
+              <div className="flex flex-col items-center justify-center py-20 text-center flex-1">
+                 <div className="w-20 h-20 bg-white/50 dark:bg-slate-800/50 rounded-[2rem] flex items-center justify-center backdrop-blur-md shadow-2xl border border-white/50 dark:border-slate-700 mb-8 relative">
+                   <div className="absolute inset-0 rounded-[2rem] border-2 border-indigo-500/30 animate-ping"></div>
+                   <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
+                 </div>
+                 <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-2">Connecting to Sponsor</h2>
+                 <p className="text-slate-500 dark:text-slate-400 font-medium">Sit back. Your free credits will be injected momentarily.</p>
               </div>
             )}
 
             {/* Flashcard Render Workspace */}
             {flashcards.length === 0 && !isGenerating && !isAdPlaying ? (
-              <div className="flex flex-col items-center justify-center h-full max-w-sm mx-auto text-center py-10 mt-12 pb-24">
-                <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl flex items-center justify-center mb-6 border border-indigo-100 dark:border-indigo-800/50 shadow-inner">
-                  <BookOpen className="w-8 h-8 text-indigo-500 animate-pulse" />
+              <div className="flex flex-col items-center justify-center max-w-md mx-auto text-center py-16 flex-1">
+                <div className="w-24 h-24 bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/20 dark:to-slate-900 rounded-[2rem] flex items-center justify-center mb-8 border border-white dark:border-slate-800 shadow-2xl shadow-indigo-500/10">
+                  <BookOpen className="w-10 h-10 text-indigo-500 mix-blend-multiply dark:mix-blend-lighten" />
                 </div>
-                <h4 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">
-                  {flashcardsFile ? "Generate Study Cards" : "Waiting for Document"}
+                <h4 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-4">
+                  {flashcardsFile ? "Ready to Synthesize" : "Awaiting Document"}
                 </h4>
-                <p className="text-slate-505 dark:text-slate-400 text-sm mb-6 leading-relaxed">
+                <p className="text-slate-500 dark:text-slate-400 text-base leading-relaxed mb-10 max-w-sm">
                   {flashcardsFile 
-                    ? "Let AI analyze your document text to extract and build 8 highly technical, study-ready interactive flashcards." 
-                    : "Upload a PDF study guide in the left panel to trigger the AI-driven study companion."
+                    ? "Our advanced LLM will trace the document architecture and isolate the 8 most critical vectors into interactive flashcards." 
+                    : "Upload a PDF in the left suite. The AI engine will parse its contents natively."
                   }
                 </p>
                 {flashcardsFile && (
                   <button 
                     onClick={handlePrepareGeneration}
-                    className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-indigo-600 hover:bg-indigo-705 text-white rounded-xl font-bold transition-all shadow-md shadow-indigo-600/20 max-w-xs hover:scale-[1.01]"
+                    className="w-full flex items-center justify-center gap-3 px-8 py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-2xl font-extrabold text-base shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.2)] dark:hover:shadow-[0_8px_30px_rgba(255,255,255,0.2)] transition-all hover:-translate-y-1 active:scale-95"
                   >
-                    <Sparkles className="w-4 h-4" />
-                    Build Flashcards (AI)
+                    <Sparkles className="w-5 h-5 flex-shrink-0 text-indigo-400 dark:text-indigo-600" />
+                    Commence Synthesis
                   </button>
                 )}
               </div>
             ) : isGenerating ? (
-              <div className="flex flex-col items-center justify-center h-full text-center py-12 mt-12">
-                <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-6" />
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Generating Flashcards...</h4>
-                <p className="text-sm text-slate-505 dark:text-slate-400">Synthesizing core technical elements into Question/Answer vectors</p>
+              <div className="flex flex-col items-center justify-center py-20 text-center flex-1">
+                <div className="relative mb-8">
+                  <div className="w-24 h-24 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center animate-pulse">
+                    <Loader2 className="w-10 h-10 text-violet-600 animate-spin" />
+                  </div>
+                  {/* orbiting element simulation */}
+                  <div className="absolute inset-0 border-4 border-dashed border-violet-500/30 rounded-full animate-[spin_4s_linear_infinite]"></div>
+                </div>
+                <h4 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-3 tracking-tight">Extracting Knowledge Vectors</h4>
+                <p className="text-slate-500 dark:text-slate-400 relative">Scanning semantics and structuring Q/A boundaries.</p>
               </div>
             ) : flashcards.length > 0 ? (
-              <div className="space-y-6 w-full max-w-xl mx-auto py-4">
-                {/* Visual Card Stage */}
+              <div className="w-full max-w-2xl mx-auto flex-1 flex flex-col justify-center">
+                {/* Premium Visual Card Stage */}
                 <div 
                   onClick={() => setIsFlipped(!isFlipped)}
-                  className={`relative w-full min-h-[300px] rounded-3xl cursor-pointer transition-all duration-300 border focus:outline-none select-none group flex flex-col justify-between overflow-hidden shadow-sm ${
-                    isFlipped 
-                      ? 'bg-amber-50/20 dark:bg-amber-950/20 border-amber-205 dark:border-amber-900/40 hover:shadow-md' 
-                      : 'bg-indigo-50/15 dark:bg-indigo-950/10 border-indigo-100 dark:border-indigo-900/30 hover:border-indigo-200 dark:hover:border-indigo-800'
-                  }`}
+                  style={{ perspective: "1500px" }}
+                  className="w-full h-full min-h-[400px] mb-8 relative group"
                 >
-                  {/* Banner tag */}
-                  <div className="px-5 py-3 border-b flex items-center justify-between text-xs font-semibold tracking-wide uppercase font-mono ${
-                    isFlipped 
-                      ? 'border-amber-100/60 text-amber-600 dark:text-amber-400' 
-                      : 'border-indigo-100/50 text-indigo-600 dark:text-indigo-400'
-                  }">
-                    <span className="flex items-center gap-1">
-                      <HelpCircle className="w-3.5 h-3.5" />
-                      {isFlipped ? "Answer Side" : "Question Side"}
-                    </span>
-                    <span className="text-[10px] bg-white/80 dark:bg-slate-900 px-2 py-0.5 rounded-full border">
-                      {currentIndex + 1} / {flashcards.length}
-                    </span>
-                  </div>
+                  <div 
+                    className={`w-full h-full relative transition-all duration-700 rounded-[2.5rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] dark:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] cursor-pointer focus:outline-none select-none flex justify-center`}
+                    style={{ transformStyle: "preserve-3d", transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)" }}
+                  >
+                    {/* Front Face (Question) */}
+                    <div className="absolute inset-0 w-full h-full backface-hidden rounded-[2.5rem] bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white/50 dark:border-slate-700/50 flex flex-col overflow-hidden" 
+                         style={{ backfaceVisibility: 'hidden' }}>
+                      <div className="px-8 py-5 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs font-bold tracking-widest uppercase font-sans text-indigo-500 dark:text-indigo-400 bg-white/50 dark:bg-slate-900/50">
+                        <span className="flex items-center gap-2">
+                          <HelpCircle className="w-4 h-4" /> The Inquiry
+                        </span>
+                        <span className="text-[10px] bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-3 py-1 rounded-lg border border-indigo-100 dark:border-indigo-800">
+                          {currentIndex + 1} / {flashcards.length}
+                        </span>
+                      </div>
+                      <div className="flex-1 p-8 sm:p-12 flex flex-col justify-center overflow-y-auto text-slate-800 dark:text-slate-100 text-lg sm:text-xl font-medium leading-relaxed custom-scrollbar">
+                        <MarkdownRenderer content={flashcards[currentIndex].question} />
+                      </div>
+                      <div className="py-4 text-center text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest opacity-60 group-hover:opacity-100 transition-opacity bg-slate-50/50 dark:bg-[#030712]/50 border-t border-slate-100 dark:border-slate-800/80">
+                        Tap to reveal
+                      </div>
+                    </div>
 
-                  {/* Question or Answer Core text rendered via MarkdownRenderer */}
-                  <div className="p-6 md:p-8 flex-1 flex flex-col justify-center text-slate-800 dark:text-slate-100">
-                    <MarkdownRenderer content={isFlipped ? flashcards[currentIndex].answer : flashcards[currentIndex].question} />
-                  </div>
-
-                  {/* Flipping Prompt Indicator */}
-                  <div className="px-5 py-3 bg-slate-50/50 dark:bg-slate-900/30 border-t border-slate-100 dark:border-slate-800/60 text-[10px] font-bold tracking-wider text-slate-400 uppercase text-center group-hover:text-slate-500 transition-colors">
-                    Click card to flip and verify
+                    {/* Back Face (Answer) */}
+                    <div className="absolute inset-0 w-full h-full backface-hidden rounded-[2.5rem] bg-amber-50/90 dark:bg-[#1e1b12]/90 backdrop-blur-xl border border-amber-200/60 dark:border-amber-900/40 flex flex-col overflow-hidden"
+                         style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
+                      <div className="px-8 py-5 border-b border-amber-200/40 dark:border-amber-900/40 flex items-center justify-between text-xs font-bold tracking-widest uppercase font-sans text-amber-600 dark:text-amber-500 bg-white/50 dark:bg-black/20">
+                        <span className="flex items-center gap-2">
+                          <Award className="w-4 h-4" /> The Resolution
+                        </span>
+                        <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400 px-3 py-1 rounded-lg border border-amber-200 dark:border-amber-800/50">
+                          Solution Key
+                        </span>
+                      </div>
+                      <div className="flex-1 p-8 sm:p-12 flex flex-col justify-center overflow-y-auto text-slate-900 dark:text-slate-100 text-base sm:text-lg leading-relaxed custom-scrollbar prose dark:prose-invert max-w-none">
+                        <MarkdownRenderer content={flashcards[currentIndex].answer} />
+                      </div>
+                      <div className="py-4 text-center text-xs font-bold text-amber-600/60 dark:text-amber-500/60 uppercase tracking-widest opacity-60 group-hover:opacity-100 transition-opacity bg-white/30 dark:bg-black/30 border-t border-amber-200/40 dark:border-amber-900/40">
+                        Tap to flip back
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 {/* Question grading actions */}
-                <div className="flex items-center justify-center gap-4 py-2">
+                <div className="flex items-center justify-center gap-4 sm:gap-6 mt-auto">
                   <button
                     onClick={() => handleUpdateStatus('review')}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                    className={`flex items-center justify-center gap-2 px-6 py-4 rounded-2xl text-sm font-extrabold transition-all border-2 shadow-sm ${
                       flashcards[currentIndex].status === 'review'
-                        ? 'bg-amber-100/50 border-amber-300 text-amber-705 dark:bg-amber-950/30'
-                        : 'border-slate-205 dark:border-slate-800 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-900'
+                        ? 'bg-amber-100 border-amber-400 text-amber-700 dark:bg-amber-900/40 dark:border-amber-600 dark:text-amber-300 scale-105'
+                        : 'bg-white/80 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:border-amber-300 dark:hover:border-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 backdrop-blur-sm'
                     }`}
                   >
-                    Needs Review
+                    Flag for Review
                   </button>
                   <button
                     onClick={() => handleUpdateStatus('mastered')}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                    className={`flex items-center justify-center gap-2 px-6 py-4 rounded-2xl text-sm font-extrabold transition-all border-2 shadow-sm ${
                       flashcards[currentIndex].status === 'mastered'
-                        ? 'bg-emerald-100/50 border-emerald-300 text-emerald-705 dark:bg-emerald-955/30'
-                        : 'border-slate-205 dark:border-slate-800 text-slate-505 hover:bg-slate-50 dark:hover:bg-slate-900'
+                        ? 'bg-emerald-100 border-emerald-400 text-emerald-700 dark:bg-emerald-900/40 dark:border-emerald-600 dark:text-emerald-300 scale-105'
+                        : 'bg-white/80 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:border-emerald-300 dark:hover:border-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 backdrop-blur-sm'
                     }`}
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-505" />
-                    Mastered
+                    <CheckCircle2 className={`w-5 h-5 ${flashcards[currentIndex].status === 'mastered' ? 'text-emerald-600 dark:text-emerald-400' : 'opacity-70'}`} />
+                    Mark Mastered
                   </button>
                 </div>
               </div>
             ) : null}
           </div>
 
+          {/* Workspace Ad Slot (Target for dynamic injection) */}
+          <div id="workspace-ad-slot" className="w-full h-0 invisible opacity-0 bg-transparent overflow-hidden">
+            {/* Ad content will be injected here. Container remains collapsed when empty. */}
+          </div>
+
           {/* Bottom Card Navigation */}
           {flashcards.length > 0 && (
-            <div className="flex items-center justify-between border-t border-slate-150 dark:border-slate-800/80 pt-6 px-4 mt-6 shrink-0">
+            <div className="flex items-center justify-between pt-8 mt-8 shrink-0 border-t border-slate-200/50 dark:border-slate-800/50">
               <button
                 onClick={handlePrev}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold transition-all select-none active:scale-95"
+                className="flex items-center gap-2 px-5 py-3 bg-white/80 hover:bg-white dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-[1rem] text-sm font-extrabold transition-all select-none active:scale-95 shadow-sm border border-slate-200/60 dark:border-slate-700"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-5 h-5" />
                 Previous
               </button>
               
-              <div className="flex items-center gap-1.5">
+              <div className="hidden sm:flex items-center gap-2">
                 {flashcards.map((card, idx) => (
                   <button
                     key={idx}
@@ -598,14 +635,14 @@ export default function FlashcardTool() {
                       setIsFlipped(false);
                       setCurrentIndex(idx);
                     }}
-                    className={`h-2.5 rounded-full transition-all duration-300 ${
+                    className={`h-2.5 rounded-full transition-all duration-500 ${
                       idx === currentIndex
-                        ? 'w-6 bg-indigo-500'
+                        ? 'w-8 bg-indigo-500 shadow-[0_0_10px_rgba(79,70,229,0.5)]'
                         : card.status === 'mastered'
-                        ? 'w-2.5 bg-emerald-500'
+                        ? 'w-3 bg-emerald-500'
                         : card.status === 'review'
-                        ? 'w-2.5 bg-amber-500'
-                        : 'w-2.5 bg-slate-300 dark:bg-slate-700'
+                        ? 'w-3 bg-amber-500'
+                        : 'w-3 bg-slate-300 dark:bg-slate-700 hover:bg-slate-400'
                     }`}
                     title={`Go to Card ${idx + 1}`}
                   />
@@ -614,10 +651,10 @@ export default function FlashcardTool() {
 
               <button
                 onClick={handleNext}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold transition-all select-none active:scale-95"
+                className="flex items-center gap-2 px-5 py-3 bg-white/80 hover:bg-white dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-[1rem] text-sm font-extrabold transition-all select-none active:scale-95 shadow-sm border border-slate-200/60 dark:border-slate-700"
               >
                 Next
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-5 h-5" />
               </button>
             </div>
           )}
@@ -626,33 +663,33 @@ export default function FlashcardTool() {
 
       {/* Confirmation Modal */}
       {pendingCostDetails && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full shadow-2xl p-6 transform transition-all duration-200">
+        <div className="fixed inset-0 bg-slate-900/60 dark:bg-[#030712]/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-white/20 dark:border-slate-700/50 rounded-[2rem] max-w-sm w-full shadow-2xl shadow-indigo-500/10 p-8 transform transition-all duration-300">
             <div className="flex flex-col items-center text-center">
-              <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/40 rounded-full flex items-center justify-center mb-4 border border-indigo-100 dark:border-indigo-800/50">
-                <Sparkles className="w-6 h-6 text-indigo-500" />
+              <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-indigo-500/20">
+                <Sparkles className="w-8 h-8 text-white" />
               </div>
               
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2">
-                Confirm AI Study Guide
+              <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-3 tracking-tight">
+                Authorize AI Usage
               </h3>
               
-              <p className="text-slate-600 dark:text-slate-400 text-sm mb-6 leading-relaxed">
-                Your file has <strong className="font-semibold text-slate-800 dark:text-slate-200">{pendingCostDetails.wordCount} words</strong> and needs <strong className="font-semibold text-indigo-600 dark:text-indigo-400">{pendingCostDetails.cost} study credits</strong> to compile 8 premium study notes cards. Do you want to begin study?
+              <p className="text-slate-600 dark:text-slate-400 text-sm mb-8 leading-relaxed">
+                Your file has <strong className="font-bold text-slate-800 dark:text-slate-200">{pendingCostDetails.wordCount} words</strong> and requires <strong className="font-bold text-indigo-600 dark:text-indigo-400">{pendingCostDetails.cost} study credits</strong> to compile 8 premium study notes. Proceed?
               </p>
               
               <div className="flex items-center gap-3 w-full">
                 <button
                   type="button"
                   onClick={() => setPendingCostDetails(null)}
-                  className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-sm rounded-xl transition-colors cursor-pointer"
+                  className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-sm rounded-xl transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={executeGeneration}
-                  className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-md shadow-indigo-600/25 transition-colors cursor-pointer"
+                  className="flex-1 px-4 py-3 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-sm rounded-xl shadow-lg transition-colors cursor-pointer"
                 >
                   Confirm
                 </button>
@@ -664,35 +701,35 @@ export default function FlashcardTool() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full shadow-2xl p-6 transform transition-all duration-200">
+        <div className="fixed inset-0 bg-slate-900/60 dark:bg-[#030712]/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-white/20 dark:border-slate-700/50 rounded-[2rem] max-w-sm w-full shadow-2xl shadow-rose-500/10 p-8 transform transition-all duration-300">
             <div className="flex flex-col items-center text-center">
-              <div className="w-12 h-12 bg-red-50 dark:bg-red-900/40 rounded-full flex items-center justify-center mb-4 border border-red-100 dark:border-red-800/50">
-                <Trash2 className="w-6 h-6 text-red-500" />
+              <div className="w-16 h-16 bg-gradient-to-br from-rose-500 to-red-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-rose-500/20">
+                <Trash2 className="w-8 h-8 text-white" />
               </div>
               
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2">
-                Do you want to delete this chat ?
+              <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-3 tracking-tight">
+                Discard Session?
               </h3>
               
-              <p className="text-slate-600 dark:text-slate-400 text-sm mb-6 leading-relaxed">
-                This will permanently delete the AI flashcards history and remove the uploaded document.
+              <p className="text-slate-600 dark:text-slate-400 text-sm mb-8 leading-relaxed">
+                This will permanently delete the AI flashcards history and remove the uploaded document from memory.
               </p>
               
               <div className="flex items-center gap-3 w-full">
                 <button
                   type="button"
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-sm rounded-xl transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
+                  className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-sm rounded-xl transition-colors cursor-pointer"
                 >
-                  Cancel
+                  Keep Working
                 </button>
                 <button
                   type="button"
                   onClick={handleDeleteChat}
-                  className="flex-1 px-4 py-2.5 bg-red-650 text-white font-semibold text-sm rounded-xl shadow-md shadow-red-600/25 transition-colors cursor-pointer bg-red-600 hover:bg-red-700 font-bold"
+                  className="flex-1 px-4 py-3 bg-rose-600 text-white hover:bg-rose-700 font-bold text-sm rounded-xl shadow-lg transition-colors cursor-pointer"
                 >
-                  Confirm
+                  Discard
                 </button>
               </div>
             </div>

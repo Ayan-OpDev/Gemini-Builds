@@ -28,7 +28,8 @@ import {
   PaintBucket,
   GitPullRequest,
   FormInput,
-  Headphones
+  Headphones,
+  ExternalLink
 } from 'lucide-react';
 
 import { useLocation } from 'react-router-dom';
@@ -90,28 +91,28 @@ function SidebarContent({
 }: SidebarContentProps) {
   const routerLocation = useLocation();
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-slate-900 overflow-y-hidden select-none">
+    <div className="flex flex-col h-full overflow-y-hidden select-none bg-white/70 dark:bg-slate-900/70 backdrop-blur-3xl">
       {/* Top Group: List items & selectors */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-7 scrollbar">
+      <div className="flex-1 overflow-y-auto p-5 pb-0 space-y-6 scrollbar scrollbar-hide">
         
-        {/* Drawer Header Close Row */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+        {/* Drawer Header Close Row (Mobile) */}
+        <div className="flex xl:hidden items-center justify-between pb-3 border-b border-slate-200/50 dark:border-slate-800/50">
           <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
             Menu Navigation
           </span>
           <button 
             onClick={() => setMenuOpen(false)}
-            className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 Transition-colors cursor-pointer"
+            className="p-1.5 rounded-xl hover:bg-slate-200/50 dark:hover:bg-slate-800/50 text-slate-500 transition-colors cursor-pointer"
             title="Close menu drawer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Main items panel */}
         <div className="space-y-4">
-          <span className="px-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-2">
-            Workspace
+          <span className="px-3 text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-3">
+            Primary Workspace
           </span>
           
           <button
@@ -120,14 +121,14 @@ function SidebarContent({
                onSelectTool('dashboard');
                setMenuOpen(false);
             }}
-            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-all focus:outline-none ${
+            className={`w-full group flex items-center justify-between px-3 py-3 rounded-xl text-sm font-semibold cursor-pointer transition-all focus:outline-none ${
               activeTool === 'dashboard'
-                ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-l-2 border-emerald-500 rounded-l-none pl-2.5 font-bold'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-md transform scale-[1.02]'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <span className="flex items-center gap-2">
-              <LayoutDashboard className="w-4 h-4" />
+            <span className="flex items-center gap-3">
+              <LayoutDashboard className={`w-4 h-4 ${activeTool === 'dashboard' ? 'opacity-100' : 'opacity-70 group-hover:opacity-100 transition-opacity'}`} />
               Dashboard Overview
             </span>
           </button>
@@ -138,32 +139,37 @@ function SidebarContent({
                onSelectTool('local');
                setMenuOpen(false);
             }}
-            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-all focus:outline-none ${
+            className={`w-full group flex items-center justify-between px-3 py-3 rounded-xl text-sm font-semibold cursor-pointer transition-all focus:outline-none ${
               routerLocation.pathname.startsWith('/local') && !routerLocation.pathname.startsWith('/local/summarizer')
-                ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-l-2 border-emerald-500 rounded-l-none pl-2.5 font-bold'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-emerald-500 dark:bg-emerald-500 text-white shadow-md shadow-emerald-500/20 transform scale-[1.02]'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <span className="flex items-center gap-2">
-              <Scissors className="w-4 h-4" />
+            <span className="flex items-center gap-3">
+              <Scissors className={`w-4 h-4 ${routerLocation.pathname.startsWith('/local') && !routerLocation.pathname.startsWith('/local/summarizer') ? 'opacity-100' : 'opacity-70 group-hover:opacity-100 transition-opacity'}`} />
               Local Tools
             </span>
           </button>
+        </div>
 
+        <div className="space-y-4 pt-2">
+          <span className="px-3 text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-3">
+            AI Capabilities
+          </span>
           <button
             id="sidebar-nav-summarizer"
             onClick={() => {
                onSelectTool('summarizer');
                setMenuOpen(false);
             }}
-            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-all focus:outline-none ${
+            className={`w-full group flex items-center justify-between px-3 py-3 rounded-xl text-sm font-semibold cursor-pointer transition-all focus:outline-none ${
               activeTool === 'summarizer'
-                ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-700 dark:text-violet-400 border-l-2 border-violet-500 rounded-l-none pl-2.5 font-bold'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-violet-600 dark:bg-violet-500 text-white shadow-md shadow-violet-500/20 transform scale-[1.02]'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <span className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4" />
+            <span className="flex items-center gap-3">
+              <Sparkles className={`w-4 h-4 ${activeTool === 'summarizer' ? 'opacity-100' : 'opacity-70 group-hover:opacity-100 transition-opacity'}`} />
               PDF Summarizer
             </span>
           </button>
@@ -174,85 +180,87 @@ function SidebarContent({
                onSelectTool('flashcards');
                setMenuOpen(false);
             }}
-            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-all focus:outline-none ${
+            className={`w-full group flex items-center justify-between px-3 py-3 rounded-xl text-sm font-semibold cursor-pointer transition-all focus:outline-none ${
               activeTool === 'flashcards'
-                ? 'bg-violet-50 dark:bg-violet-950/20 text-violet-700 dark:text-violet-400 border-l-2 border-violet-500 rounded-l-none pl-2.5 font-bold'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-indigo-600 dark:bg-indigo-500 text-white shadow-md shadow-indigo-500/20 transform scale-[1.02]'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <span className="flex items-center gap-2">
-              <BookOpen className="w-4 h-4" />
+            <span className="flex items-center gap-3">
+              <BookOpen className={`w-4 h-4 ${activeTool === 'flashcards' ? 'opacity-100' : 'opacity-70 group-hover:opacity-100 transition-opacity'}`} />
               Flashcard Studio
             </span>
           </button>
         </div>
 
+        {/* Sidebar Native Ad Slot (Target for dynamic injection) */}
+        <div id="sidebar-ad-slot" className="w-full h-0 invisible opacity-0 bg-transparent overflow-hidden">
+          {/* Ad content will be injected here. Container remains collapsed when empty. */}
+        </div>
+
         {/* Mobile Theme selector settings */}
-        <div className="md:hidden pt-5 border-t border-slate-100 dark:border-slate-800 space-y-2">
-          <span className="px-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">
-            Theme Appearance
+        <div className="md:hidden py-4 space-y-3">
+          <span className="px-3 text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">
+            Appearance
           </span>
-          <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-lg border border-slate-200/60 dark:border-slate-700/60 shadow-inner">
+          <div className="flex items-center gap-1 bg-slate-100/80 dark:bg-slate-800/80 p-1.5 rounded-xl border border-slate-200/60 dark:border-slate-700/60 backdrop-blur-sm">
             <button
               onClick={() => setTheme('light')}
-              className={`flex-grow flex justify-center items-center gap-1.5 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all ${
+              className={`flex-grow flex justify-center items-center gap-1.5 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
                 theme === 'light'
                   ? 'bg-white dark:bg-slate-700 text-amber-500 shadow-sm'
                   : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
               }`}
             >
               <Sun className="w-3.5 h-3.5" />
-              <span>Light</span>
             </button>
             <button
               onClick={() => setTheme('dark')}
-              className={`flex-grow flex justify-center items-center gap-1.5 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all ${
+              className={`flex-grow flex justify-center items-center gap-1.5 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
                 theme === 'dark'
                   ? 'bg-white dark:bg-slate-700 text-indigo-400 dark:text-indigo-300 shadow-sm'
                   : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
               }`}
             >
               <Moon className="w-3.5 h-3.5" />
-              <span>Dark</span>
             </button>
             <button
               onClick={() => setTheme('system')}
-              className={`flex-grow flex justify-center items-center gap-1.5 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all ${
+              className={`flex-grow flex justify-center items-center gap-1.5 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
                 theme === 'system'
                   ? 'bg-white dark:bg-slate-700 text-emerald-500 shadow-sm'
                   : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
               }`}
             >
               <Monitor className="w-3.5 h-3.5" />
-              <span>System</span>
             </button>
           </div>
         </div>
       </div>
 
       {/* Sidebar Account and Footer Info (Bottom group with mt-auto) */}
-      <div className="mt-auto p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/30 space-y-4 shrink-0">
+      <div className="mt-auto p-5 bg-white/40 dark:bg-slate-900/40 border-t border-slate-200/50 dark:border-slate-800/50 space-y-4 shrink-0 backdrop-blur-md">
         {/* Account Details & Sign Out for Mobile viewports */}
         <div className="md:hidden">
           {loading ? (
             <div className="text-xs text-slate-400 py-2">Loading account details...</div>
           ) : user ? (
-            <div className="flex flex-col gap-2.5 p-3.5 bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-2xl shadow-sm">
+            <div className="flex flex-col gap-3 p-4 bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/60 rounded-2xl shadow-sm">
               <div className="flex items-center gap-3">
                 {user.photoURL ? (
-                  <img src={user.photoURL} alt="Avatar" className="w-9 h-9 rounded-full border border-slate-200 dark:border-slate-700 shrink-0" />
+                  <img src={user.photoURL} alt="Avatar" className="w-10 h-10 rounded-full border border-slate-200 dark:border-slate-700 shrink-0" />
                 ) : (
-                  <div className="w-9 h-9 rounded-full bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center shrink-0">
-                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase">
+                  <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0">
+                    <span className="text-sm font-bold text-slate-600 dark:text-slate-300 uppercase">
                       {(profile?.name || user.displayName || 'U')[0]}
                     </span>
                   </div>
                 )}
                 <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate pr-1">
+                  <span className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate pr-1">
                     {profile?.name || user.displayName || 'User'}
                   </span>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                  <span className="text-[10px] text-slate-500 truncate">
                     {user.email}
                   </span>
                 </div>
@@ -260,7 +268,7 @@ function SidebarContent({
               
               <button 
                 onClick={logOut} 
-                className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-xl text-rose-600 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-950/50 border border-rose-100 dark:border-rose-900/50 transition-all cursor-pointer focus:outline-none"
+                className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-all cursor-pointer focus:outline-none"
               >
                 Sign Out
               </button>
@@ -268,7 +276,7 @@ function SidebarContent({
           ) : (
             <button 
               onClick={signInWithGoogle}
-              className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/15 cursor-pointer transition-all"
+              className="w-full flex items-center justify-center gap-2 py-3 text-xs font-bold rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 dark:text-slate-900 text-white shadow-md cursor-pointer transition-all"
               title="Sign in with Google"
             >
               Sign In with Google
@@ -276,12 +284,14 @@ function SidebarContent({
           )}
         </div>
 
-        <div className="flex items-start gap-2.5">
-          <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-100/50 dark:bg-slate-800/30 border border-slate-200/50 dark:border-slate-700/30">
+          <div className="w-6 h-6 rounded-md bg-emerald-100 dark:bg-emerald-950/50 flex items-center justify-center shrink-0 mt-0.5 shadow-inner">
+            <ShieldBan className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+          </div>
           <div className="space-y-0.5">
-            <span className="text-[10px] font-bold text-slate-800 dark:text-slate-200">Local Sandbox Mode</span>
-            <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-normal">
-              All PDF.js and pdf-lib calls are held in memory. No files ever leave this container.
+            <span className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-widest block">Local Sandbox Mode</span>
+            <p className="text-[9px] font-medium text-slate-500 dark:text-slate-400 leading-relaxed">
+              All PDF.js calls are held in memory. No files ever leave this secure environment.
             </p>
           </div>
         </div>
@@ -362,21 +372,21 @@ export default function Shell({ children, activeTool, onSelectTool }: ShellProps
   }, [theme]);
 
   return (
-    <div id="application-shell" className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col font-sans transition-colors duration-300">
+    <div id="application-shell" className="min-h-screen relative bg-[#f8fafc] dark:bg-[#030712] flex flex-col font-sans transition-colors duration-500 overflow-hidden">
       
       {/* Upper Navigation Header */}
-      <header id="shell-header" className="sticky top-0 z-40 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 h-16 flex items-center justify-between px-6 transition-colors duration-300 select-none">
+      <header id="shell-header" className="sticky top-0 z-40 bg-white/70 dark:bg-[#030712]/70 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/50 h-16 flex items-center justify-between px-4 sm:px-6 transition-colors duration-500 select-none">
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           {/* Universal Hamburger Button */}
           <button
             id="workspace-burger-menu-btn"
             onClick={() => setMenuOpen(!menuOpen)}
-            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer focus:outline-none"
+            className="p-2 rounded-xl hover:bg-slate-200/50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer focus:outline-none"
             aria-label="Toggle navigation drawer"
             title="Toggle workspace menu"
           >
-            {menuOpen ? <X className="w-5 h-5 text-emerald-600" /> : <Menu className="w-5 h-5" />}
+            {menuOpen ? <X className="w-[18px] h-[18px] text-emerald-600" /> : <Menu className="w-[18px] h-[18px]" />}
           </button>
 
           <div
@@ -384,12 +394,12 @@ export default function Shell({ children, activeTool, onSelectTool }: ShellProps
               onSelectTool('dashboard');
               setMenuOpen(false);
             }}
-            className="flex items-center gap-2 cursor-pointer group"
+            className="flex items-center gap-3 cursor-pointer group"
           >
-            <div className="p-2 bg-emerald-600 rounded-lg text-white group-hover:scale-105 transition-transform">
-              <FileText className="w-5 h-5" />
+            <div className="w-8 h-8 flex items-center justify-center bg-slate-900 dark:bg-white rounded-xl text-white dark:text-slate-900 group-hover:scale-105 transition-transform shadow-md">
+              <FileText className="w-4 h-4 text-white dark:text-slate-900" />
             </div>
-            <span className="text-base font-extrabold text-slate-900 dark:text-white tracking-tight">
+            <span className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight hidden sm:block">
               PDF Editor & Reader
             </span>
           </div>
@@ -399,32 +409,38 @@ export default function Shell({ children, activeTool, onSelectTool }: ShellProps
           <div className="flex items-center gap-4">
             
             {isAIMode && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full border border-amber-200/60 dark:border-amber-700/50 text-[10px] font-bold select-none whitespace-nowrap">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-500/10 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300 rounded-full border border-violet-500/20 text-[10px] font-extrabold select-none whitespace-nowrap backdrop-blur-sm">
+                <Sparkles className="w-3 h-3 text-violet-500 animate-pulse" />
                 <span>Credits: {profile?.credits ?? (user ? '...' : 0)}</span>
               </div>
             )}
 
             {/* User Auth Controller - Desktop only */}
-            <div className="hidden md:block">
+            <div className="hidden lg:block">
               {loading ? (
                 <div className="text-xs text-slate-400">Loading...</div>
               ) : user ? (
                 <div className="flex items-center gap-3">
-                  <div className="flex flex-col items-end">
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{profile?.name || user.displayName || 'User'}</span>
-                    <button onClick={logOut} className="text-[10px] font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300">
+                  <div className="flex flex-col items-end pt-1">
+                    <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{profile?.name || user.displayName || 'User'}</span>
+                    <button onClick={logOut} className="text-[10px] font-bold text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300 transition-colors">
                       Sign Out
                     </button>
                   </div>
-                  {user.photoURL && (
-                    <img src={user.photoURL} alt="Avatar" className="w-8 h-8 rounded-full border border-slate-200 dark:border-slate-700" />
+                  {user.photoURL ? (
+                    <img src={user.photoURL} alt="Avatar" className="w-9 h-9 rounded-full border-2 border-white dark:border-slate-800 shadow-sm" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center border-2 border-white dark:border-slate-900">
+                      <span className="text-sm font-bold text-slate-600 dark:text-slate-300 uppercase">
+                        {(profile?.name || user.displayName || 'U')[0]}
+                      </span>
+                    </div>
                   )}
                 </div>
               ) : (
                 <button 
                   onClick={signInWithGoogle}
-                  className="px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
+                  className="px-4 py-2 text-xs font-extrabold rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:hover:bg-slate-200 dark:text-slate-900 transition-colors shadow-sm"
                   title="Sign in with Google"
                 >
                   Sign In
@@ -433,57 +449,57 @@ export default function Shell({ children, activeTool, onSelectTool }: ShellProps
             </div>
 
             {/* Theme Selector Tab Widget - Desktop only */}
-            <div className="hidden md:flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-lg border border-slate-200/60 dark:border-slate-700/60 shadow-inner">
+            <div className="hidden lg:flex items-center gap-1 bg-slate-100/80 dark:bg-slate-800/80 p-1.5 rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-inner backdrop-blur-sm">
               <button
                 onClick={() => setTheme('light')}
-                className={`p-1.5 rounded-md transition-all focus:outline-none cursor-pointer ${
+                className={`p-1.5 rounded-lg transition-all focus:outline-none cursor-pointer ${
                   theme === 'light'
-                    ? 'bg-white dark:bg-slate-700 text-amber-500 shadow-xs ring-1 ring-black/5 font-semibold'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-[0_2px_8px_rgba(0,0,0,0.08)] font-semibold scale-105'
                     : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
                 }`}
                 title="Light style theme"
               >
-                <Sun className="w-3.5 h-3.5" />
+                <Sun className="w-[14px] h-[14px]" />
               </button>
               <button
                 onClick={() => setTheme('dark')}
-                className={`p-1.5 rounded-md transition-all focus:outline-none cursor-pointer ${
+                className={`p-1.5 rounded-lg transition-all focus:outline-none cursor-pointer ${
                   theme === 'dark'
-                    ? 'bg-white dark:bg-slate-700 text-indigo-400 dark:text-indigo-300 shadow-xs ring-1 ring-black/5 font-semibold'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-[0_2px_8px_rgba(0,0,0,0.08)] font-semibold scale-105'
                     : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
                 }`}
                 title="Dark style theme"
               >
-                <Moon className="w-3.5 h-3.5" />
+                <Moon className="w-[14px] h-[14px]" />
               </button>
               <button
                 onClick={() => setTheme('system')}
-                className={`p-1.5 rounded-md transition-all focus:outline-none cursor-pointer ${
+                className={`p-1.5 rounded-lg transition-all focus:outline-none cursor-pointer ${
                   theme === 'system'
-                    ? 'bg-white dark:bg-slate-700 text-emerald-500 shadow-xs ring-1 ring-black/5 font-semibold'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-[0_2px_8px_rgba(0,0,0,0.08)] font-semibold scale-105'
                     : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
                 }`}
                 title="Sync with OS System theme override"
               >
-                <Monitor className="w-3.5 h-3.5" />
+                <Monitor className="w-[14px] h-[14px]" />
               </button>
             </div>
 
             {isAIMode ? (
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-violet-50 dark:bg-violet-900/30 text-violet-800 dark:text-violet-300 rounded-full border border-violet-200 dark:border-violet-700/40 text-[10px] font-bold select-none">
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-violet-600 text-white rounded-xl text-[10px] font-extrabold select-none shadow-md shadow-violet-600/20">
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-300 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
                 </span>
-                AI Engine Active
+                Cloud AI Active
               </div>
             ) : (
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-950/35 text-emerald-800 dark:text-emerald-400 rounded-full border border-emerald-100 dark:border-emerald-900/40 text-[10px] font-bold select-none">
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-[10px] font-extrabold select-none shadow-md shadow-emerald-500/20">
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-200 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
                 </span>
-                100% Private Client Execution
+                Client Execution
               </div>
             )}
           </div>
@@ -496,9 +512,9 @@ export default function Shell({ children, activeTool, onSelectTool }: ShellProps
         <aside
           id="shell-sidebar-drawer"
           style={{ height: '100dvh' }}
-          className={`shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 fixed top-0 bottom-0 left-0 w-72 transform ${
-            menuOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
-          } transition-transform duration-300 ease-in-out z-50 flex flex-col justify-between h-screen h-[100dvh] overflow-y-hidden`}
+          className={`shrink-0 border-r border-slate-200/50 dark:border-slate-800/50 bg-white/40 dark:bg-slate-900/40 backdrop-blur-3xl fixed top-0 bottom-0 left-0 w-[280px] transform ${
+            menuOpen ? 'translate-x-0 shadow-[0_0_80px_rgba(0,0,0,0.15)] dark:shadow-[0_0_80px_rgba(0,0,0,0.5)]' : '-translate-x-full'
+          } transition-transform duration-500 cubic-bezier(0.16, 1, 0.3, 1) z-50 flex flex-col justify-between h-screen h-[100dvh] overflow-y-hidden`}
         >
           <SidebarContent 
             activeTool={activeTool} 
@@ -519,18 +535,18 @@ export default function Shell({ children, activeTool, onSelectTool }: ShellProps
           <div
             id="drawer-backdrop-shading"
             onClick={() => setMenuOpen(false)}
-            className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-40 transition-all duration-300 cursor-pointer"
+            className="fixed inset-0 bg-slate-900/20 dark:bg-slate-950/60 backdrop-blur-sm z-40 transition-all duration-500 cursor-pointer animate-in fade-in"
           />
         )}
 
         {/* Primary View Area */}
-        <main id="shell-main" className={`flex-1 max-w-full ${isAIMode ? 'p-0 overflow-hidden' : 'p-6 overflow-y-auto'}`}>
+        <main id="shell-main" className={`flex-1 max-w-[100vw] ${isAIMode ? 'p-0 overflow-hidden' : 'p-0 overflow-y-auto'}`}>
           {children}
         </main>
       </div>
 
       {/* Floating touch gesture tool selector for Mobile/Tablet viewports */}
-      <div className="md:hidden">
+      <div className="md:hidden z-30">
         <FloatingQuickActionBall activeTool={activeTool} onSelectTool={onSelectTool} />
       </div>
     </div>
