@@ -1,5 +1,6 @@
 export type ToolId =
   | 'dashboard'
+  | 'local'
   | 'image-to-pdf'
   | 'pdf-to-image'
   | 'remove-pages'
@@ -17,14 +18,16 @@ export type ToolId =
   | 'purify-metadata'
   | 'compare-pdf'
   | 'form-generator'
-  | 'audiobook-studio';
+  | 'audiobook-studio'
+  | 'summarizer'
+  | 'flashcards';
 
 export interface Tool {
   id: ToolId;
   name: string;
   description: string;
   icon: string; // Lucide icon name or type
-  category: 'edit' | 'convert' | 'view';
+  category: 'edit' | 'convert' | 'view' | 'ai';
   isReady: boolean;
 }
 

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
-import { FileUploader } from './FileUploader';
-import ProcessingOverlay from './ProcessingOverlay';
+import { FileUploader } from '../../components/FileUploader';
+import ProcessingOverlay from '../../components/ProcessingOverlay';
 import {
   ChevronLeft,
   PenTool,
@@ -150,7 +150,7 @@ export default function SignPDFTool({
         await page.render({
           canvasContext: ctx,
           viewport: responsiveViewport
-        }).promise;
+        } as any).promise;
       }
     } catch (err) {
       console.error('Error drawing viewport:', err);

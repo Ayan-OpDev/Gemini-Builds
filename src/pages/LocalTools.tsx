@@ -27,7 +27,8 @@ import {
   PaintBucket,
   GitPullRequest,
   FormInput,
-  Headphones
+  Headphones,
+  Sparkles
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -53,11 +54,13 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   PaintBucket: PaintBucket,
   GitPullRequest: GitPullRequest,
   FormInput: FormInput,
-  Headphones: Headphones
+  Headphones: Headphones,
+  Sparkles: Sparkles
 };
 
 const toolNameMap: Record<ToolId, string> = {
   'dashboard': 'Dashboard',
+  'local': 'Local Tools',
   'image-to-pdf': 'Image to PDF',
   'pdf-to-image': 'PDF to Image',
   'remove-pages': 'Remove Pages',
@@ -75,7 +78,9 @@ const toolNameMap: Record<ToolId, string> = {
   'purify-metadata': 'Metadata Purifier',
   'compare-pdf': 'Visual PDF "Diff"',
   'form-generator': 'Interactive Form Generator',
-  'audiobook-studio': 'Audiobook Studio'
+  'audiobook-studio': 'Audiobook Studio',
+  'summarizer': 'PDF Summarizer',
+  'flashcards': 'Flashcard Studio'
 };
 
 const formatSize = (bytes: number) => {
@@ -99,7 +104,7 @@ const formatTimeAgo = (timestamp: number) => {
   return `${days}d ago`;
 };
 
-export default function Dashboard({ onSelectTool, onSelectRecentFile }: DashboardProps) {
+export default function LocalTools({ onSelectTool, onSelectRecentFile }: DashboardProps) {
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
 
   useEffect(() => {
@@ -122,9 +127,9 @@ export default function Dashboard({ onSelectTool, onSelectRecentFile }: Dashboar
   };
 
   return (
-    <div id="dashboard-root" className="space-y-12 max-w-6xl mx-auto py-4">
+    <div id="local-root" className="space-y-12 max-w-6xl mx-auto py-4">
       {/* Hero Section */}
-      <div id="dashboard-hero" className="text-center space-y-4 max-w-2xl mx-auto">
+      <div id="local-hero" className="text-center space-y-4 max-w-2xl mx-auto">
         <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-tight">
           Modern Client-Side <br />
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500">
@@ -156,7 +161,7 @@ export default function Dashboard({ onSelectTool, onSelectRecentFile }: Dashboar
       </div>
 
       {/* Grid Section */}
-      <div id="dashboard-grid-container" className="space-y-12">
+      <div id="local-grid-container" className="space-y-12">
         {/* Recent Files Queue */}
         {recentFiles.length > 0 && (
           <div id="recent-files-subgrid" className="space-y-4">
@@ -229,10 +234,10 @@ export default function Dashboard({ onSelectTool, onSelectRecentFile }: Dashboar
 
         <div>
           <h2 className="text-lg font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-3 mb-6">
-            Core Utilities
+            Client-Side Local Tools
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {TOOLS.map((tool) => {
+            {TOOLS.filter(t => t.category !== 'ai').map((tool) => {
               const IconComponent = iconMap[tool.icon] || Scissors;
               return (
                 <div

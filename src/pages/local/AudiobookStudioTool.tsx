@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Headphones, ArrowLeft, Loader2, Play, Pause, Square, SkipBack, SkipForward, Volume2 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
-import { FileUploader } from './FileUploader';
+import { FileUploader } from '../../components/FileUploader';
 
 export default function AudiobookStudioTool({ onBackToDashboard, initialFile, onFileLoaded }: any) {
   const [file, setFile] = useState<File | null>(initialFile || null);

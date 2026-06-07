@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ShieldBan, ArrowLeft, Loader2, Download, Save } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument, rgb } from 'pdf-lib';
-import { FileUploader } from './FileUploader';
+import { FileUploader } from '../../components/FileUploader';
 
 interface RedactRect {
     id: string;
@@ -37,7 +37,15 @@ export default function SmartPrivacyRedactorTool({ onBackToDashboard, initialFil
     try {
       const arrayBuffer = await f.arrayBuffer();
       if (arrayBuffer.byteLength === 0) throw new Error("Empty file buffer");
-      const loadedPdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      
+      const pdfjsVersion = pdfjsLib.version || '6.0.227';
+      const loadedPdf = await pdfjsLib.getDocument({ 
+        data: arrayBuffer,
+        standardFontDataUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/standard_fonts/`,
+        cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/cmaps/`,
+        cMapPacked: true
+      }).promise;
+      
       setPdfDoc(loadedPdf);
       setNumPages(loadedPdf.numPages);
       setCurrentPage(1);
@@ -73,7 +81,11 @@ export default function SmartPrivacyRedactorTool({ onBackToDashboard, initialFil
       viewport: viewport,
     };
     
-    await page.render(renderContext).promise;
+    try {
+      await page.render(renderContext).promise;
+    } catch (renderError) {
+      console.warn("Graceful rendering fallback triggered (likely missing embedded fonts):", renderError);
+    }
   };
 
   useEffect(() => {

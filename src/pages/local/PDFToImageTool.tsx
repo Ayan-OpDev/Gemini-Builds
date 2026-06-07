@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import JSZip from 'jszip';
-import { FileUploader } from './FileUploader';
-import ProcessingOverlay from './ProcessingOverlay';
+import { FileUploader } from '../../components/FileUploader';
+import ProcessingOverlay from '../../components/ProcessingOverlay';
 import {
   ChevronLeft,
   FileImage,
@@ -116,7 +116,7 @@ export default function PDFToImageTool({
         await page.render({
           canvasContext: ctx,
           viewport: viewport
-        }).promise;
+        } as any).promise;
 
         const mimeType = exportFormat === 'png' ? 'image/png' : 'image/jpeg';
         const fileExt = exportFormat;

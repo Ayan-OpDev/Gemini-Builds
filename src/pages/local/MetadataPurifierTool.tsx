@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PaintBucket, ShieldCheck, AlertCircle, FileText, ArrowLeft, Loader2, Sparkles, XCircle, Edit3, Save } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
-import { FileUploader } from './FileUploader';
+import { FileUploader } from '../../components/FileUploader';
 
 interface MetadataPurifierToolProps {
   onBackToDashboard: () => void;

@@ -1,40 +1,54 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Shell from './components/Shell';
-import Dashboard from './components/Dashboard';
-import RemovePagesTool from './components/RemovePagesTool';
-import ImageToPDFTool from './components/ImageToPDFTool';
-import PDFToImageTool from './components/PDFToImageTool';
-import SignPDFTool from './components/SignPDFTool';
-import WatermarkTool from './components/WatermarkTool';
-import QRCodeTool from './components/QRCodeTool';
-import BookReaderTool from './components/BookReaderTool';
-import MergePDFTool from './components/MergePDFTool';
-import AddPageNumbersTool from './components/AddPageNumbersTool';
-import OCRPDFTool from './components/OCRPDFTool';
-import LockPDFTool from './components/LockPDFTool';
-import UnlockPDFTool from './components/UnlockPDFTool';
-import SmartScannerTool from './components/SmartScannerTool';
-import SmartPrivacyRedactorTool from './components/SmartPrivacyRedactorTool';
-import MetadataPurifierTool from './components/MetadataPurifierTool';
-import VisualPDFDiffTool from './components/VisualPDFDiffTool';
-import FormGeneratorTool from './components/FormGeneratorTool';
-import AudiobookStudioTool from './components/AudiobookStudioTool';
+import Dashboard from './pages/Dashboard';
 import WeaponWheel from './components/WeaponWheel';
-import { ToolId, RecentFile } from './types';
+import { FileProvider, useFileContext } from './hooks/useFileContext';
+import { TOOLS } from './data/tools';
 
-export default function App() {
-  const [activeTool, setActiveTool] = useState<ToolId>('dashboard');
-  const [sessionFiles, setSessionFiles] = useState<Record<string, File>>({});
-  const [activeFile, setActiveFile] = useState<File | null>(null);
+// Local Tools
+import RemovePagesTool from './pages/local/RemovePagesTool';
+import ImageToPDFTool from './pages/local/ImageToPDFTool';
+import PDFToImageTool from './pages/local/PDFToImageTool';
+import SignPDFTool from './pages/local/SignPDFTool';
+import WatermarkTool from './pages/local/WatermarkTool';
+import QRCodeTool from './pages/local/QRCodeTool';
+import BookReaderTool from './pages/local/BookReaderTool';
+import MergePDFTool from './pages/local/MergePDFTool';
+import AddPageNumbersTool from './pages/local/AddPageNumbersTool';
+import OCRPDFTool from './pages/local/OCRPDFTool';
+import LockPDFTool from './pages/local/LockPDFTool';
+import UnlockPDFTool from './pages/local/UnlockPDFTool';
+import SmartScannerTool from './pages/local/SmartScannerTool';
+import SmartPrivacyRedactorTool from './pages/local/SmartPrivacyRedactorTool';
+import MetadataPurifierTool from './pages/local/MetadataPurifierTool';
+import VisualPDFDiffTool from './pages/local/VisualPDFDiffTool';
+import FormGeneratorTool from './pages/local/FormGeneratorTool';
+import AudiobookStudioTool from './pages/local/AudiobookStudioTool';
+
+import LocalTools from './pages/LocalTools';
+
+// AI Tools
+import SummarizerTool from './pages/ai/SummarizerTool';
+import FlashcardTool from './pages/ai/FlashcardTool';
+
+import { AuthProvider } from './hooks/useAuth';
+import { AiProtectedRoute } from './components/AiProtectedRoute';
+
+function AppLayout() {
   const [weaponWheelActive, setWeaponWheelActive] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in input/textarea
+      if (!location.pathname.startsWith('/local')) {
+        return;
+      }
       if (
         document.activeElement instanceof HTMLInputElement ||
         document.activeElement instanceof HTMLTextAreaElement ||
-        document.activeElement?.isContentEditable
+        (document.activeElement as HTMLElement)?.isContentEditable
       ) {
         return;
       }
@@ -56,60 +70,30 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [location.pathname]);
 
-  const handleSelectRecentFile = (recent: RecentFile) => {
-    const file = sessionFiles[recent.id];
-    if (file) {
-      setActiveFile(file);
-    } else {
-      setActiveFile(null);
-      // Give a soft user-facing warning if the in-memory File has collected garbage
-      alert(`To continue editing "${recent.name}", please select or drop it again in the upload area.`);
+  const handleSelectTool = (id: string) => {
+    if (id === 'dashboard') {
+      navigate('/dashboard');
+      return;
     }
-    setActiveTool(recent.toolId);
-  };
-
-  const handleFileLoaded = (file: File, toolId: ToolId, pageCount?: number) => {
-    const id = `${file.name}-${file.size}-${toolId}`;
-    setSessionFiles((prev) => ({
-      ...prev,
-      [id]: file,
-    }));
-
-    const recent: RecentFile = {
-      id,
-      name: file.name,
-      size: file.size,
-      toolId,
-      timestamp: Date.now(),
-      pageCount,
-    };
-
-    try {
-      const stored = localStorage.getItem('pdf_workspace_recent_files');
-      let list: RecentFile[] = [];
-      if (stored) {
-        list = JSON.parse(stored);
+    if (id === 'local') {
+      navigate('/local');
+      return;
+    }
+    const tool = TOOLS.find(t => t.id === id);
+    if (tool) {
+      if (tool.category === 'ai') {
+        navigate(`/ai/${id}`);
+      } else {
+        navigate(`/local/${id}`);
       }
-      list = list.filter((item) => item.id !== id);
-      list.unshift(recent);
-      list = list.slice(0, 6);
-      localStorage.setItem('pdf_workspace_recent_files', JSON.stringify(list));
-    } catch (e) {
-      console.error(e);
     }
   };
 
-  const navigateToDashboard = () => {
-    setActiveFile(null);
-    setActiveTool('dashboard');
-  };
-
-  const handleSelectTool = (id: ToolId) => {
-    setActiveFile(null);
-    setActiveTool(id);
-  };
+  const pathParts = location.pathname.split('/').filter(Boolean);
+  const activeTool = pathParts.length > 1 ? pathParts[1] : (pathParts[0] || 'dashboard');
+  const isAIMode = pathParts[0] === 'ai';
 
   return (
     <>
@@ -119,131 +103,216 @@ export default function App() {
         onSelectTool={handleSelectTool} 
       />
       <Shell activeTool={activeTool} onSelectTool={handleSelectTool}>
-      {activeTool === 'dashboard' ? (
-        <Dashboard onSelectTool={handleSelectTool} onSelectRecentFile={handleSelectRecentFile} />
-      ) : activeTool === 'remove-pages' ? (
-        <RemovePagesTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f, pc) => handleFileLoaded(f, 'remove-pages', pc)}
-        />
-      ) : activeTool === 'image-to-pdf' ? (
-        <ImageToPDFTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f, pc) => handleFileLoaded(f, 'image-to-pdf', pc)}
-        />
-      ) : activeTool === 'pdf-to-image' ? (
-        <PDFToImageTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f, pc) => handleFileLoaded(f, 'pdf-to-image', pc)}
-        />
-      ) : activeTool === 'sign' ? (
-        <SignPDFTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f, pc) => handleFileLoaded(f, 'sign', pc)}
-        />
-      ) : activeTool === 'watermark' ? (
-        <WatermarkTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f, pc) => handleFileLoaded(f, 'watermark', pc)}
-        />
-      ) : activeTool === 'qr-code' ? (
-        <QRCodeTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f, pc) => handleFileLoaded(f, 'qr-code', pc)}
-        />
-      ) : activeTool === 'book-reader' ? (
-        <BookReaderTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f, pc) => handleFileLoaded(f, 'book-reader', pc)}
-        />
-      ) : activeTool === 'merge-pdf' ? (
-        <MergePDFTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f, pc) => handleFileLoaded(f, 'merge-pdf', pc)}
-        />
-      ) : activeTool === 'add-page-numbers' ? (
-        <AddPageNumbersTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f, pc) => handleFileLoaded(f, 'add-page-numbers', pc)}
-        />
-      ) : activeTool === 'ocr-pdf' ? (
-        <OCRPDFTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f, pc) => handleFileLoaded(f, 'ocr-pdf', pc)}
-        />
-      ) : activeTool === 'lock-pdf' ? (
-        <LockPDFTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f, pc) => handleFileLoaded(f, 'lock-pdf', pc)}
-        />
-      ) : activeTool === 'unlock-pdf' ? (
-        <UnlockPDFTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f, pc) => handleFileLoaded(f, 'unlock-pdf', pc)}
-        />
-      ) : activeTool === 'scanner' ? (
-        <SmartScannerTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f, pc) => handleFileLoaded(f, 'scanner', pc)}
-        />
-      ) : activeTool === 'redact-pdf' ? (
-        <SmartPrivacyRedactorTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f: File, pc: number) => handleFileLoaded(f, 'redact-pdf', pc)}
-        />
-      ) : activeTool === 'purify-metadata' ? (
-        <MetadataPurifierTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f: File, pc: number) => handleFileLoaded(f, 'purify-metadata', pc)}
-        />
-      ) : activeTool === 'compare-pdf' ? (
-        <VisualPDFDiffTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f: File, pc: number) => handleFileLoaded(f, 'compare-pdf', pc)}
-        />
-      ) : activeTool === 'form-generator' ? (
-        <FormGeneratorTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f: File, pc: number) => handleFileLoaded(f, 'form-generator', pc)}
-        />
-      ) : activeTool === 'audiobook-studio' ? (
-        <AudiobookStudioTool
-          onBackToDashboard={navigateToDashboard}
-          initialFile={activeFile}
-          onFileLoaded={(f: File, pc: number) => handleFileLoaded(f, 'audiobook-studio', pc)}
-        />
-      ) : (
-        <div id="unsupported-view-placeholder" className="text-center py-20 space-y-4 max-w-sm mx-auto">
-          <div className="text-slate-400 font-bold mb-2">Upcoming Tool Module</div>
-          <p className="text-xs text-slate-500 leading-normal">
-            This module is scheduled for development in Phase 2 of the PDF Editor & Reader workspace.
-          </p>
-          <button
-            onClick={() => setActiveTool('dashboard')}
-            className="text-xs font-bold px-4 py-2 bg-slate-900 dark:bg-slate-800 text-white rounded-lg hover:opacity-90"
-          >
-            Return to Dashboard
-          </button>
-        </div>
-      )}
-    </Shell>
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardRoute />} />
+          <Route path="/local" element={<LocalToolsRoute />} />
+          
+          <Route path="/local/remove-pages" element={<RemovePagesRoute />} />
+          <Route path="/local/image-to-pdf" element={<ImageToPDFRoute />} />
+          <Route path="/local/pdf-to-image" element={<PDFToImageRoute />} />
+          <Route path="/local/sign" element={<SignPDFRoute />} />
+          <Route path="/local/watermark" element={<WatermarkRoute />} />
+          <Route path="/local/qr-code" element={<QRCodeRoute />} />
+          <Route path="/local/book-reader" element={<BookReaderRoute />} />
+          <Route path="/local/merge-pdf" element={<MergePDFRoute />} />
+          <Route path="/local/add-page-numbers" element={<AddPageNumbersRoute />} />
+          <Route path="/local/ocr-pdf" element={<OCRPDFRoute />} />
+          <Route path="/local/lock-pdf" element={<LockPDFRoute />} />
+          <Route path="/local/unlock-pdf" element={<UnlockPDFRoute />} />
+          <Route path="/local/scanner" element={<SmartScannerRoute />} />
+          <Route path="/local/redact-pdf" element={<SmartPrivacyRedactorRoute />} />
+          <Route path="/local/purify-metadata" element={<MetadataPurifierRoute />} />
+          <Route path="/local/compare-pdf" element={<VisualPDFDiffRoute />} />
+          <Route path="/local/form-generator" element={<FormGeneratorRoute />} />
+          <Route path="/local/audiobook-studio" element={<AudiobookStudioRoute />} />
+          
+          <Route path="/ai/summarizer" element={
+            <AiProtectedRoute>
+              <SummarizerTool />
+            </AiProtectedRoute>
+          } />
+          <Route path="/ai/flashcards" element={
+            <AiProtectedRoute>
+              <FlashcardTool />
+            </AiProtectedRoute>
+          } />
+          
+        </Routes>
+      </Shell>
     </>
+  );
+}
+
+// Wrappers for Tools to access context and navigation
+
+function DashboardRoute() {
+  const navigate = useNavigate();
+  const { handleSelectRecentFile } = useFileContext();
+  
+  const handleSelectTool = (id: string) => {
+    if (id === 'local') {
+      navigate('/local');
+      return;
+    }
+    const tool = TOOLS.find(t => t.id === id);
+    if (tool) {
+      if (tool.category === 'ai') {
+        navigate(`/ai/${id}`);
+      } else {
+        navigate(`/local/${id}`);
+      }
+    }
+  };
+
+  const handleRecent = (recent: any) => {
+    handleSelectRecentFile(recent);
+    handleSelectTool(recent.toolId);
+  }
+
+  return <Dashboard onSelectTool={handleSelectTool as any} onSelectRecentFile={handleRecent} />
+}
+
+function LocalToolsRoute() {
+  const navigate = useNavigate();
+  const { handleSelectRecentFile } = useFileContext();
+  
+  const handleSelectTool = (id: string) => {
+    const tool = TOOLS.find(t => t.id === id);
+    if (tool) {
+      if (tool.category === 'ai') {
+        navigate(`/ai/${id}`);
+      } else {
+        navigate(`/local/${id}`);
+      }
+    }
+  };
+
+  const handleRecent = (recent: any) => {
+    handleSelectRecentFile(recent);
+    handleSelectTool(recent.toolId);
+  }
+
+  return <LocalTools onSelectTool={handleSelectTool as any} onSelectRecentFile={handleRecent} />
+}
+
+function RemovePagesRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <RemovePagesTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'remove-pages', pc)} />;
+}
+
+function ImageToPDFRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <ImageToPDFTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'image-to-pdf', pc)} />;
+}
+
+function PDFToImageRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <PDFToImageTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'pdf-to-image', pc)} />;
+}
+
+function SignPDFRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <SignPDFTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'sign', pc)} />;
+}
+
+function WatermarkRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <WatermarkTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'watermark', pc)} />;
+}
+
+function QRCodeRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <QRCodeTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'qr-code', pc)} />;
+}
+
+function BookReaderRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <BookReaderTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'book-reader', pc)} />;
+}
+
+function MergePDFRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <MergePDFTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'merge-pdf', pc)} />;
+}
+
+function AddPageNumbersRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <AddPageNumbersTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'add-page-numbers', pc)} />;
+}
+
+function OCRPDFRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <OCRPDFTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'ocr-pdf', pc)} />;
+}
+
+function LockPDFRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <LockPDFTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'lock-pdf', pc)} />;
+}
+
+function UnlockPDFRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <UnlockPDFTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'unlock-pdf', pc)} />;
+}
+
+function SmartScannerRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <SmartScannerTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'scanner', pc)} />;
+}
+
+function SmartPrivacyRedactorRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <SmartPrivacyRedactorTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'redact-pdf', pc)} />;
+}
+
+function MetadataPurifierRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <MetadataPurifierTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'purify-metadata', pc)} />;
+}
+
+function VisualPDFDiffRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <VisualPDFDiffTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'compare-pdf', pc)} />;
+}
+
+function FormGeneratorRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <FormGeneratorTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'form-generator', pc)} />;
+}
+
+function AudiobookStudioRoute() {
+  const navigate = useNavigate();
+  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
+  return <AudiobookStudioTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'audiobook-studio', pc)} />;
+}
+
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <FileProvider>
+          <AppLayout />
+        </FileProvider>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }

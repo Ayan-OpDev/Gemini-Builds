@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
-import { FileUploader } from './FileUploader';
-import ProcessingOverlay from './ProcessingOverlay';
+import { FileUploader } from '../../components/FileUploader';
+import ProcessingOverlay from '../../components/ProcessingOverlay';
 import { 
   ChevronLeft, 
   FileSearch, 

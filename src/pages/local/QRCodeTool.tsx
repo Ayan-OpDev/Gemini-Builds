@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
 import QRCode from 'qrcode';
-import { FileUploader } from './FileUploader';
-import ProcessingOverlay from './ProcessingOverlay';
+import { FileUploader } from '../../components/FileUploader';
+import ProcessingOverlay from '../../components/ProcessingOverlay';
 import {
   ChevronLeft,
   QrCode,
@@ -133,7 +133,7 @@ export default function QRCodeTool({
         await page.render({
           canvasContext: ctx,
           viewport: responsiveViewport
-        }).promise;
+        } as any).promise;
       }
     } catch (err) {
       console.error(err);

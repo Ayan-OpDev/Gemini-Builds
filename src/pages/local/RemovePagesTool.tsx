@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
-import { FileUploader } from './FileUploader';
-import PDFThumbnail from './PDFThumbnail';
-import ProcessingOverlay from './ProcessingOverlay';
+import { FileUploader } from '../../components/FileUploader';
+import PDFThumbnail from '../../components/PDFThumbnail';
+import ProcessingOverlay from '../../components/ProcessingOverlay';
 import { 
   FileText, 
   Trash2, 

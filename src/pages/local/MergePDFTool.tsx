@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PDFDocument } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
 import { useDropzone } from 'react-dropzone';
-import ProcessingOverlay from './ProcessingOverlay';
+import ProcessingOverlay from '../../components/ProcessingOverlay';
 import { 
   ChevronLeft, 
   Combine, 

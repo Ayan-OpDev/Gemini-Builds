@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { PDFDocument, PageSizes } from 'pdf-lib';
-import ProcessingOverlay from './ProcessingOverlay';
+import ProcessingOverlay from '../../components/ProcessingOverlay';
 import {
   ChevronLeft,
   Image as ImageIcon,

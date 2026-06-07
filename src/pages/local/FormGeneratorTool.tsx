@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FormInput, ArrowLeft, Loader2, Save, Download, PlusCircle } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument, rgb } from 'pdf-lib';
-import { FileUploader } from './FileUploader';
+import { FileUploader } from '../../components/FileUploader';
 
 interface FormField {
     id: string;

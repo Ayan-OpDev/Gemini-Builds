@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
-import { FileUploader } from './FileUploader';
+import { FileUploader } from '../../components/FileUploader';
 import {
   ChevronLeft,
   BookOpen,
@@ -149,7 +149,7 @@ export default function BookReaderTool({
               await page.render({
                 canvasContext: ctx,
                 viewport: responsiveViewport
-              }).promise;
+              } as any).promise;
             }
           }
         } else {
@@ -170,7 +170,7 @@ export default function BookReaderTool({
               await page.render({
                 canvasContext: ctx,
                 viewport: responsiveViewport
-              }).promise;
+              } as any).promise;
             }
           }
 
@@ -193,7 +193,7 @@ export default function BookReaderTool({
                 await page.render({
                   canvasContext: ctx,
                   viewport: responsiveViewport
-                }).promise;
+                } as any).promise;
               }
             } else {
               // Empty final back cover
@@ -220,7 +220,7 @@ export default function BookReaderTool({
             await page.render({
               canvasContext: ctx,
               viewport: responsiveViewport
-            }).promise;
+            } as any).promise;
           }
         }
       }

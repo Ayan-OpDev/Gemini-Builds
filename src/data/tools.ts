@@ -2,6 +2,22 @@ import { Tool } from '../types';
 
 export const TOOLS: Tool[] = [
   {
+    id: 'summarizer',
+    name: 'PDF Summarizer',
+    description: 'Use the AI Engine to extract key concepts, summaries, and action items instantly.',
+    icon: 'Sparkles',
+    category: 'ai',
+    isReady: true
+  },
+  {
+    id: 'flashcards',
+    name: 'Flashcard Studio',
+    description: 'Compile premium study notes and interactive training cards directly from any document.',
+    icon: 'BookOpen',
+    category: 'ai',
+    isReady: true
+  },
+  {
     id: 'remove-pages',
     name: 'Remove Pages',
     description: 'Delete unwanted pages from your document. Visual grid selection with instant download.',
