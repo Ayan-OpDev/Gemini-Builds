@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db } from '../firebase';
-import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { onAuthStateChanged, User, signInWithRedirect, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, updateDoc, increment } from 'firebase/firestore';
 
 interface UserProfile {
@@ -82,8 +82,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
+    // The Google Web Client ID for this project is:
+    // 1031833096595-0hi0222tkigr7qedg5eruo80lapsaeu2.apps.googleusercontent.com
+    // Note: Firebase Auth handles this ID internally via the connected Firebase Console.
     try {
-      await signInWithPopup(auth, provider);
+      await signInWithRedirect(auth, provider);
     } catch (error) {
       console.error("Google sign in error", error);
     }
