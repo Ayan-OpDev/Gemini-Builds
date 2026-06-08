@@ -184,7 +184,73 @@ app.post("/api/ai/summarize", async (req: any, res: any) => {
   }
 });
 
-// Flashcards Generation Handler
+async function requestAIChat(messages: any[]) {
+  // Ensure the system prompt enforces the 1000 word limit and 3-row limit
+  const systemFound = messages.some(m => m.role === 'system');
+  if (!systemFound) {
+    messages.unshift({ 
+      role: 'system', 
+      content: 'You are a helpful and intelligent assistant. Limit your responses to 1000 words maximum. If you produce any tables in your markdown output, always limit them to a maximum of 3 data rows.' 
+    });
+  }
+
+  // Vision generally works better on some specific openrouter models or gemini models depending on what's configured,
+  // but OpenRouter /free auto router will try to route.
+  // We add 'google/gemini-1.5-flash' to models just in case vision is used because it supports multi-modal.
+  const CHAT_MODELS = [
+    "openai/gpt-4o-mini",
+    "nousresearch/hermes-3-llama-3.1-405b:free"
+  ];
+
+  for (const modelId of CHAT_MODELS) {
+    try {
+      console.log(`Attempting chat request with model: ${modelId}`);
+      
+      const payload = validateAndGetChatPayload(modelId, messages);
+      const response = await openrouter.chat.send(payload);
+
+      if (!response || !response.choices || response.choices.length === 0) {
+        throw new Error("Invalid response format.");
+      }
+      return { message: response.choices[0].message.content, modelUsed: modelId };
+    } catch (error: any) {
+      console.warn(`Model ${modelId} failed. Reason: ${error.message}`);
+      continue; 
+    }
+  }
+
+  try {
+    const payload = validateAndGetChatPayload("openrouter/free", messages);
+    const fallbackResponse = await openrouter.chat.send(payload);
+
+    if (!fallbackResponse || !fallbackResponse.choices || fallbackResponse.choices.length === 0) {
+      throw new Error("Invalid fallback response format.");
+    }
+    return { message: fallbackResponse.choices[0].message.content, modelUsed: "openrouter/free" };
+  } catch (finalError: any) {
+    throw new Error(`The AI services are not able to process this file format or request. Details: ${finalError.message}`);
+  }
+}
+
+// Chat Generator Handler
+app.post("/api/ai/chat", async (req: any, res: any) => {
+  const { messages } = req.body;
+
+  if (!messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: "Messages array is required" });
+  }
+
+  if (!OPENROUTER_API_KEY) {
+    return res.status(500).json({ error: "OPENROUTER_API_KEY is not configured on the server." });
+  }
+
+  try {
+    const result = await requestAIChat(messages);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(503).json({ error: "This file is not supported!" });
+  }
+});
 app.post("/api/ai/flashcards", async (req: any, res: any) => {
   const { text } = req.body;
 

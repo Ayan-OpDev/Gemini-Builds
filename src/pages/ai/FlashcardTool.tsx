@@ -144,28 +144,11 @@ export default function FlashcardTool() {
     try {
       const extractedText = await extractTextFromPDF(flashcardsFile);
       const { wordCount, cost } = calculateAICost(extractedText);
+      const finalCost = Math.max(2, Math.min(10, cost));
       
-      setPendingCostDetails({ wordCount, cost: Math.max(2, Math.min(10, cost)), extractedText });
-      setIsGenerating(false);
-    } catch (e: any) {
-      console.error(e);
-      setError(e.message || "An error occurred during PDF text extraction.");
-      setIsGenerating(false);
-    }
-  };
-
-  const executeGeneration = async () => {
-    if (!pendingCostDetails || !flashcardsFile) return;
-    const { cost, extractedText } = pendingCostDetails;
-
-    setPendingCostDetails(null);
-    setIsGenerating(true);
-    setError(null);
-
-    try {
       const currentBalance = profile?.credits || 0;
-      if (currentBalance < cost) {
-        setError(`Insufficient credits. You need ${cost} but have ${currentBalance}.`);
+      if (currentBalance < finalCost) {
+        setError(`Insufficient credits. You need ${finalCost} but have ${currentBalance}.`);
         setIsGenerating(false);
         return;
       }
@@ -183,7 +166,7 @@ export default function FlashcardTool() {
 
       const data = await response.json();
 
-      const success = await deductCredits(cost);
+      const success = await deductCredits(finalCost);
       if (!success) {
         throw new Error("Failed to sync credit deduction with the database.");
       }
@@ -660,44 +643,6 @@ export default function FlashcardTool() {
           )}
         </div>
       </div>
-
-      {/* Confirmation Modal */}
-      {pendingCostDetails && (
-        <div className="fixed inset-0 bg-slate-900/60 dark:bg-[#030712]/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in">
-          <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-white/20 dark:border-slate-700/50 rounded-[2rem] max-w-sm w-full shadow-2xl shadow-indigo-500/10 p-8 transform transition-all duration-300">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-indigo-500/20">
-                <Sparkles className="w-8 h-8 text-white" />
-              </div>
-              
-              <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-3 tracking-tight">
-                Authorize AI Usage
-              </h3>
-              
-              <p className="text-slate-600 dark:text-slate-400 text-sm mb-8 leading-relaxed">
-                Your file has <strong className="font-bold text-slate-800 dark:text-slate-200">{pendingCostDetails.wordCount} words</strong> and requires <strong className="font-bold text-indigo-600 dark:text-indigo-400">{pendingCostDetails.cost} study credits</strong> to compile 8 premium study notes. Proceed?
-              </p>
-              
-              <div className="flex items-center gap-3 w-full">
-                <button
-                  type="button"
-                  onClick={() => setPendingCostDetails(null)}
-                  className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-sm rounded-xl transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={executeGeneration}
-                  className="flex-1 px-4 py-3 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-sm rounded-xl shadow-lg transition-colors cursor-pointer"
-                >
-                  Confirm
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (

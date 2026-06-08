@@ -119,27 +119,6 @@ export default function SummarizerTool() {
       const extractedText = await extractTextFromPDF(summarizerFile);
       const { wordCount, cost } = calculateAICost(extractedText);
       
-      // Store details to show custom confirmation dialog
-      setPendingCostDetails({ wordCount, cost, extractedText, mode });
-      setIsSummarizing(false);
-    } catch (e: any) {
-      console.error(e);
-      setError(e.message || "An error occurred during PDF text extraction.");
-      setIsSummarizing(false);
-    }
-  };
-
-  const executeSummarization = async () => {
-    if (!pendingCostDetails || !summarizerFile) return;
-    const { cost, extractedText, mode } = pendingCostDetails;
-
-    // Close options modal and resume summarization loader
-    setPendingCostDetails(null);
-    setIsSummarizing(true);
-    setError(null);
-
-    try {
-      // 2. Check Balance BEFORE fetching
       const currentBalance = profile?.credits || 0;
       if (currentBalance < cost) {
         setError(`Insufficient credits. You need ${cost} but have ${currentBalance}.`);
@@ -171,7 +150,6 @@ export default function SummarizerTool() {
       
       setSummary(newSummary);
       sessionStorage.setItem(`summary_${summarizerFile.name}`, newSummary);
-
     } catch (e: any) {
       console.error(e);
       setError(e.message || "An error occurred during summarization.");
@@ -503,44 +481,6 @@ export default function SummarizerTool() {
           )}
         </div>
       </div>
-
-      {/* Custom Confirmation Dialog Modal */}
-      {pendingCostDetails && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full shadow-2xl p-6 transform transition-all duration-200">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/40 rounded-full flex items-center justify-center mb-4 border border-indigo-100 dark:border-indigo-800/50 animate-bounce">
-                <Sparkles className="w-6 h-6 text-indigo-500" />
-              </div>
-              
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2">
-                Confirm Summarization
-              </h3>
-              
-              <p className="text-slate-600 dark:text-slate-400 text-sm mb-6 leading-relaxed">
-                This document contains <strong className="font-semibold text-slate-800 dark:text-slate-200">{pendingCostDetails.wordCount} words</strong> and requires <strong className="font-semibold text-indigo-600 dark:text-indigo-400">{pendingCostDetails.cost} credits</strong> to summarize. Would you like to proceed?
-              </p>
-              
-              <div className="flex items-center gap-3 w-full animate-fade-in">
-                <button
-                  type="button"
-                  onClick={() => setPendingCostDetails(null)}
-                  className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-sm rounded-xl transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={executeSummarization}
-                  className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-md shadow-indigo-600/25 transition-colors cursor-pointer"
-                >
-                  Confirm
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (

@@ -9,6 +9,10 @@
 
 @variant dark (&:where(.dark, .dark *));
 
+body {
+  overscroll-behavior-y: none;
+}
+
 /* Custom modern thin scrollbar for dashboard items and thumb views */
 .scrollbar::-webkit-scrollbar {
   width: 6px;

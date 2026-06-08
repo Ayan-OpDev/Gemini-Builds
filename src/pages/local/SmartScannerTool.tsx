@@ -3,6 +3,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import { FileUploader } from '../../components/FileUploader';
 import ProcessingOverlay from '../../components/ProcessingOverlay';
+import { ConfirmModal } from '../../components/ConfirmModal';
 import { useLoadWASM } from '../../hooks/useLoadWASM';
 import {
   ChevronLeft,
@@ -23,7 +24,8 @@ import {
   ShieldCheck,
   Compass,
   FileCheck2,
-  Sparkle
+  Sparkle,
+  Trash2
 } from 'lucide-react';
 
 const pdfjsVersion = pdfjsLib.version || '6.0.227';
@@ -246,6 +248,24 @@ export default function SmartScannerTool({
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const [showConfirmClear, setShowConfirmClear] = useState<boolean>(false);
+
+  const handleClearDocument = () => {
+    setShowConfirmClear(true);
+  };
+
+  const confirmClearDocument = () => {
+    setFile(null);
+    if (fileUrl) URL.revokeObjectURL(fileUrl);
+    setFileUrl(null);
+    setSourceImage(null);
+    setCroppedImage(null);
+    setFilteredImage(null);
+    setPagesData({});
+    setPageCount(0);
+    setCurrentPage(0);
+    setShowPreview(false);
+  };
 
   // Handle Clean up URLs on unmount
   useEffect(() => {
@@ -1601,6 +1621,11 @@ export default function SmartScannerTool({
 
   return (
     <div id="smart-scanner-root" className="container mx-auto max-w-6xl space-y-6 py-2">
+      <ConfirmModal 
+        isOpen={showConfirmClear} 
+        onClose={() => setShowConfirmClear(false)} 
+        onConfirm={confirmClearDocument} 
+      />
       {/* Upper Navigation Row */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div className="flex items-center gap-3">
@@ -1626,8 +1651,8 @@ export default function SmartScannerTool({
           </div>
         </div>
 
-        {/* OpenCV WebAssembly state pill */}
-        <div className="flex items-center">
+        {/* OpenCV WebAssembly state pill & Global Actions */}
+        <div className="flex items-center gap-3">
           {opencvLoading ? (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 text-xs text-indigo-700 dark:text-indigo-400 font-medium">
               <span className="w-3.5 h-3.5 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin shrink-0"></span>
@@ -1642,6 +1667,15 @@ export default function SmartScannerTool({
               <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               WASM Core Loaded & Active
             </div>
+          )}
+          {file && (
+            <button 
+              onClick={handleClearDocument}
+              title="Close / Delete Document"
+              className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 text-rose-500 rounded-lg transition-colors border border-transparent hover:border-red-200 dark:hover:border-red-900/50"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
           )}
         </div>
       </div>
@@ -1899,7 +1933,17 @@ export default function SmartScannerTool({
             )}
 
             {/* Row 2: Action Tools */}
-            <div className="grid grid-cols-5 gap-3">
+            <div className="grid grid-cols-6 gap-2 sm:gap-3">
+              <button
+                onClick={handleAutoDetectClick}
+                className="flex flex-col items-center justify-center py-2.5 rounded-xl border border-indigo-500/30 bg-indigo-950/20 hover:bg-indigo-900/40 text-indigo-400 group transition-all cursor-pointer"
+                title="Automatically detect edges to crop"
+                id="action-auto-crop"
+              >
+                <Sparkles className="w-4.5 h-4.5 transition-colors group-hover:text-indigo-300" />
+                <span className="text-[10px] mt-1 font-bold">Auto Crop</span>
+              </button>
+
               <button
                 onClick={handleRotate}
                 className="flex flex-col items-center justify-center py-2.5 rounded-xl border border-slate-800 bg-slate-900/50 hover:bg-slate-900 hover:text-white text-slate-300 transition-all cursor-pointer group"

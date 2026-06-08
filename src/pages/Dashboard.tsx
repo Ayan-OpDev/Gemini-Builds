@@ -82,7 +82,8 @@ const toolNameMap: Record<ToolId, string> = {
   'form-generator': 'Interactive Form Generator',
   'audiobook-studio': 'Audiobook Studio',
   'summarizer': 'AI PDF Summarizer',
-  'flashcards': 'Flashcard Studio'
+  'flashcards': 'Flashcard Studio',
+  'chat-ai': 'Chat with PDF'
 };
 
 const formatSize = (bytes: number) => {

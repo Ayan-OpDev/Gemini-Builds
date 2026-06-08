@@ -3,6 +3,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
 import { FileUploader } from '../../components/FileUploader';
 import ProcessingOverlay from '../../components/ProcessingOverlay';
+import { ConfirmModal } from '../../components/ConfirmModal';
 import {
   ChevronLeft,
   PenTool,
@@ -67,6 +68,7 @@ export default function SignPDFTool({
   const [signatureAssetUrl, setSignatureAssetUrl] = useState<string | null>(null);
   const [signatureAssetBuffer, setSignatureAssetBuffer] = useState<ArrayBuffer | null>(null);
   const [placedSig, setPlacedSig] = useState<PlacedSignature | null>(null);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
 
   // Layout rendering triggers
   const [renderingPage, setRenderingPage] = useState<boolean>(false);
@@ -78,6 +80,7 @@ export default function SignPDFTool({
   const drawCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const renderCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingRef = useRef<boolean>(false);
+  const [showConfirmClear, setShowConfirmClear] = useState<boolean>(false);
 
   // Manage revocation of memoryURLs
   useEffect(() => {
@@ -86,6 +89,23 @@ export default function SignPDFTool({
       if (signatureAssetUrl) URL.revokeObjectURL(signatureAssetUrl);
     };
   }, [fileUrl, signatureAssetUrl]);
+
+  const handleClearDocument = () => {
+    setShowConfirmClear(true);
+  };
+
+  const confirmClearDocument = () => {
+    setFile(null);
+    if (fileUrl) URL.revokeObjectURL(fileUrl);
+    setFileUrl(null);
+    setTypedName('');
+    setPlacedSig(null);
+    if (signatureAssetUrl) URL.revokeObjectURL(signatureAssetUrl);
+    setSignatureAssetUrl(null);
+    setSignatureAssetBuffer(null);
+    setPageCount(0);
+    setPdfDoc(null);
+  };
 
   // Read upload PDF
   const handleFileSelected = useCallback(async (selectedFile: File) => {
@@ -313,6 +333,8 @@ export default function SignPDFTool({
               scale: 1.0
             });
           }
+          
+          setIsSheetOpen(false);
         }, 'image/png');
       }
     }
@@ -373,18 +395,44 @@ export default function SignPDFTool({
       const sigImg = await pdfDocLib.embedPng(signatureAssetBuffer);
 
       // Width coordinates mapping. Standard signature is 120 points wide inside scaled context matching display.
-      const targetW = 125 * placedSig.scale;
-      const targetH = (targetW / sigImg.width) * sigImg.height;
+      const renderCanvas = renderCanvasRef.current;
+      const pdfContainerWidth = renderCanvas ? renderCanvas.clientWidth : pageW;
+      const pdfContainerHeight = renderCanvas ? renderCanvas.clientHeight : pageH;
 
-      // Position calculations mapping 0-100 percentages ratio to pdf-lib (starts at lower left for y axis!)
-      const pdfX = (placedSig.x / 100) * pageW;
-      const pdfY = ((100 - (placedSig.y + 11)) / 100) * pageH; // adjusting base coordinate flip heights
+      const sigWidth = 125 * placedSig.scale;
+      const sigHeight = (sigWidth / sigImg.width) * sigImg.height;
+      
+      const stampElement = document.getElementById('visible-signature-stamp');
+      
+      const screenData = {
+        pdfContainerWidth,
+        pdfContainerHeight,
+        sigX: (placedSig.x / 100) * pdfContainerWidth,
+        sigY: (placedSig.y / 100) * pdfContainerHeight,
+        sigWidth: stampElement ? stampElement.clientWidth : sigWidth,
+        sigHeight: stampElement ? stampElement.clientHeight : sigHeight
+      };
+
+      // 1. Calculate Scale
+      const scaleX = pageW / screenData.pdfContainerWidth;
+      const scaleY = pageH / screenData.pdfContainerHeight;
+
+      // 2. Scale the signature dimensions
+      const finalWidth = screenData.sigWidth * scaleX;
+      const finalHeight = screenData.sigHeight * scaleY;
+
+      // 3. Translate X
+      const finalX = screenData.sigX * scaleX;
+
+      // 4. Translate Y (Invert axis AND account for the image's own height)
+      // The DOM Y is the top edge. We need the PDF Y, which is the bottom edge.
+      const finalY = pageH - ((screenData.sigY + screenData.sigHeight) * scaleY);
 
       targetPage.drawImage(sigImg, {
-        x: pdfX,
-        y: pdfY,
-        width: targetW,
-        height: targetH
+        x: finalX,
+        y: finalY,
+        width: finalWidth,
+        height: finalHeight
       });
 
       setProgressText('Assembling signed PDF output...');
@@ -413,10 +461,15 @@ export default function SignPDFTool({
   };
 
   return (
-    <div id="sign-pdf-view" className="space-y-6 max-w-5xl mx-auto py-2">
+    <div id="sign-pdf-view" className="flex flex-col h-[100dvh] lg:h-auto lg:block lg:space-y-6 max-w-5xl mx-auto pt-2 lg:py-2">
       <ProcessingOverlay isOpen={processing} progressText={progressText} />
+      <ConfirmModal 
+        isOpen={showConfirmClear} 
+        onClose={() => setShowConfirmClear(false)} 
+        onConfirm={confirmClearDocument} 
+      />
       {/* Upper header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
+      <div className="flex-none flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 lg:pb-6 border-b border-slate-200 dark:border-slate-800 px-4 lg:px-0">
         <div className="space-y-1.5">
           <button
             onClick={onBackToDashboard}
@@ -434,6 +487,15 @@ export default function SignPDFTool({
         </div>
 
         <div className="flex items-center gap-2">
+          {file && (
+            <button
+              onClick={handleClearDocument}
+              title="Close / Delete Document"
+              className="p-2.5 text-rose-500 hover:text-rose-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-transparent hover:border-red-200 dark:hover:border-red-900/50"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
           {file && signatureAssetUrl && (
             <button
               onClick={burnAndCompilePDF}
@@ -475,11 +537,11 @@ export default function SignPDFTool({
         </div>
       ) : (
         /* Workspace interface */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-0 lg:gap-8 relative items-start h-[calc(100dvh-4.5rem)] lg:h-auto overflow-hidden lg:overflow-visible -mx-4 lg:mx-0">
           
-          {/* Visual Canvas PDF Preview area (Interactive viewport) */}
-          <div className="lg:col-span-6 space-y-4">
-            <div className="flex items-center justify-between border-b pb-2">
+          {/* Visual Canvas PDF Preview area (Full Canvas Mobile, Sticky Desktop) */}
+          <div className="lg:col-span-7 flex flex-col flex-1 shrink-0 space-y-2 lg:space-y-4 lg:sticky lg:top-0 z-10 bg-[#f8fafc] dark:bg-[#030712] pt-2 lg:pt-0 pb-2 lg:pb-0 h-full lg:h-auto border-b lg:border-transparent border-slate-200 dark:border-slate-800 px-4 lg:px-0">
+            <div className="flex items-center justify-between border-b pb-2 shrink-0">
               <div className="flex items-center gap-1.5">
                 <Eye className="w-4 h-4 text-emerald-600" />
                 <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">
@@ -514,12 +576,12 @@ export default function SignPDFTool({
             </div>
 
             {/* Document sheet body stack */}
-            <div className="relative mx-auto border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 p-2 sm:p-4 rounded-xl flex items-center justify-center min-h-[350px] shadow-sm select-none">
+            <div className="relative mx-auto border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 p-2 sm:p-4 rounded-xl flex items-center justify-center flex-1 w-full lg:min-h-[350px] shadow-sm select-none overflow-hidden touch-none">
               
-              <div className="relative overflow-hidden">
+              <div className="relative overflow-auto max-h-[100%] max-w-[100%] flex items-center justify-center pointer-events-auto">
                 <canvas
                   ref={renderCanvasRef}
-                  className="rounded shadow bg-white transition-opacity duration-350"
+                  className="rounded shadow bg-white transition-opacity duration-350 shrink-0"
                   style={{ opacity: renderingPage ? 0.6 : 1 }}
                 />
 
@@ -574,11 +636,34 @@ export default function SignPDFTool({
             </div>
           </div>
 
-          {/* Signature Builder Panel & Settings Area */}
-          <div className="lg:col-span-6 space-y-6">
+          {/* Setup FAB for Mobile */}
+          <button
+            onClick={() => setIsSheetOpen(true)}
+            className={`lg:hidden fixed bottom-8 right-6 p-4 bg-emerald-600 text-white rounded-full shadow-2xl z-40 transition-transform ${isSheetOpen ? 'scale-0' : 'scale-100 hover:scale-105 active:scale-95'} focus:outline-none`}
+            title="Create Signature"
+          >
+            <Edit3 className="w-6 h-6" />
+          </button>
+
+          {/* Mobile Overlay Backdrop */}
+          {isSheetOpen && (
+            <div 
+              className="fixed inset-0 bg-black/60 z-40 lg:hidden backdrop-blur-sm transition-opacity"
+              onClick={() => setIsSheetOpen(false)}
+            />
+          )}
+
+          {/* Signature Builder Panel & Settings Area (Bottom Sheet on Mobile, Column on Desktop) */}
+          <div className={`
+            fixed inset-x-0 bottom-0 z-50 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 lg:border-none p-5 lg:p-0 rounded-t-3xl lg:rounded-none
+            transition-transform duration-300 transform ${isSheetOpen ? 'translate-y-0 shadow-[0_-10px_40px_rgba(0,0,0,0.1)]' : 'translate-y-full pointer-events-none lg:pointer-events-auto'}
+            lg:relative lg:translate-y-0 lg:z-auto lg:bg-transparent lg:col-span-5 space-y-6 flex-1 lg:overflow-visible pb-[max(env(safe-area-inset-bottom),1.5rem)] lg:pb-0 max-h-[85vh] lg:max-h-none overflow-y-auto px-5 lg:px-0 pt-6 lg:pt-0
+          `}>
+            
+            <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto mb-6 lg:hidden" onClick={() => setIsSheetOpen(false)} />
             
             {/* Ink drawing & typing cards */}
-            <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl p-5 space-y-6">
+            <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl p-5 lg:p-5 space-y-6">
               <div className="flex items-center gap-1.5 border-b pb-3 border-slate-100 dark:border-slate-800">
                 <Edit3 className="w-4 h-4 text-emerald-500" />
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">

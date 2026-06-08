@@ -35,7 +35,7 @@ export function calculateAICost(textString: string): { wordCount: number, cost: 
   if (!text) return { wordCount: 0, cost: 0 };
   
   const wordCount = text.split(/\s+/).length;
-  const cost = Math.ceil(wordCount / 1000);
+  const cost = Math.ceil(wordCount / 2000);
   
   return { wordCount, cost };
 }

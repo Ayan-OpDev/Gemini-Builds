@@ -20,7 +20,8 @@ export type ToolId =
   | 'form-generator'
   | 'audiobook-studio'
   | 'summarizer'
-  | 'flashcards';
+  | 'flashcards'
+  | 'chat-ai';
 
 export interface Tool {
   id: ToolId;

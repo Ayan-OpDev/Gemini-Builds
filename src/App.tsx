@@ -13,7 +13,6 @@ import PDFToImageTool from './pages/local/PDFToImageTool';
 import SignPDFTool from './pages/local/SignPDFTool';
 import WatermarkTool from './pages/local/WatermarkTool';
 import QRCodeTool from './pages/local/QRCodeTool';
-import BookReaderTool from './pages/local/BookReaderTool';
 import MergePDFTool from './pages/local/MergePDFTool';
 import AddPageNumbersTool from './pages/local/AddPageNumbersTool';
 import OCRPDFTool from './pages/local/OCRPDFTool';
@@ -31,6 +30,8 @@ import LocalTools from './pages/LocalTools';
 // AI Tools
 import SummarizerTool from './pages/ai/SummarizerTool';
 import FlashcardTool from './pages/ai/FlashcardTool';
+
+import ChatAITool from './pages/ai/ChatAITool';
 
 import { AuthProvider } from './hooks/useAuth';
 import { AiProtectedRoute } from './components/AiProtectedRoute';
@@ -114,7 +115,6 @@ function AppLayout() {
           <Route path="/local/sign" element={<SignPDFRoute />} />
           <Route path="/local/watermark" element={<WatermarkRoute />} />
           <Route path="/local/qr-code" element={<QRCodeRoute />} />
-          <Route path="/local/book-reader" element={<BookReaderRoute />} />
           <Route path="/local/merge-pdf" element={<MergePDFRoute />} />
           <Route path="/local/add-page-numbers" element={<AddPageNumbersRoute />} />
           <Route path="/local/ocr-pdf" element={<OCRPDFRoute />} />
@@ -135,6 +135,11 @@ function AppLayout() {
           <Route path="/ai/flashcards" element={
             <AiProtectedRoute>
               <FlashcardTool />
+            </AiProtectedRoute>
+          } />
+          <Route path="/ai/chat-ai" element={
+            <AiProtectedRoute>
+              <ChatAITool />
             </AiProtectedRoute>
           } />
           
@@ -230,12 +235,6 @@ function QRCodeRoute() {
   const navigate = useNavigate();
   const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
   return <QRCodeTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'qr-code', pc)} />;
-}
-
-function BookReaderRoute() {
-  const navigate = useNavigate();
-  const { activeFile, setActiveFile, handleFileLoaded } = useFileContext();
-  return <BookReaderTool onBackToDashboard={() => { setActiveFile(null); navigate('/dashboard'); }} initialFile={activeFile} onFileLoaded={(f: any, pc?: number) => handleFileLoaded(f, 'book-reader', pc)} />;
 }
 
 function MergePDFRoute() {

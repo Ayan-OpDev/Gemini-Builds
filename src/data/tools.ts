@@ -2,6 +2,14 @@ import { Tool } from '../types';
 
 export const TOOLS: Tool[] = [
   {
+    id: 'chat-ai',
+    name: 'Chat with AI',
+    description: 'Upload images, PDFs, or other documents and chat with AI up to 1000 words.',
+    icon: 'MessageSquare',
+    category: 'ai',
+    isReady: true
+  },
+  {
     id: 'summarizer',
     name: 'PDF Summarizer',
     description: 'Use the AI Engine to extract key concepts, summaries, and action items instantly.',
@@ -63,14 +71,6 @@ export const TOOLS: Tool[] = [
     description: 'Embed scan-ready, high-resolution QR codes directly on any page of your file.',
     icon: 'QrCode',
     category: 'edit',
-    isReady: true
-  },
-  {
-    id: 'book-reader',
-    name: 'Book Reader',
-    description: 'Read your documents with an immersive, full-screen 3D page-turning simulation.',
-    icon: 'BookOpen',
-    category: 'view',
     isReady: true
   },
   {
